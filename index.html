@@ -8022,7 +8022,7 @@ async function runQuest(q,party,online,me){
   return {ok:true,res:await questReward(q,online,me)};
 }
 const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
-function ensureDaily(){const t=todayStr();if(PROF.daily.d!==t){const pool=QUESTS.filter(x=>x.tier<4).map(x=>x.id);let h=0;for(const c of t)h=(h*31+c.charCodeAt(0))>>>0;const picks=[];while(picks.length<3){h=(h*1103515245+12345)>>>0;const id=pool[h%pool.length];if(!picks.includes(id))picks.push(id);}PROF.daily={d:t,picks,got:{}};saveProf();}}
+function ensureDaily(){const t=todayStr();if(PROF.daily.d!==t){const pool=QUESTS.filter(x=>x.tier<4&&!x.tut).map(x=>x.id);let h=0;for(const c of t)h=(h*31+c.charCodeAt(0))>>>0;const picks=[];while(picks.length<3){h=(h*1103515245+12345)>>>0;const id=pool[h%pool.length];if(!picks.includes(id))picks.push(id);}PROF.daily={d:t,picks,got:{}};saveProf();}}
 const isDailyPick=id=>{ensureDaily();return PROF.daily.picks.includes(id);};
 async function loginBonus(){
   const t=todayStr();if(PROF.login.last===t)return;
@@ -9782,10 +9782,12 @@ exQuest({id:'if1',name:'【IF①】終焉龍ヲ殺シタ聖女',tier:8,lv:9999,r
 
 /* ---------- 仕組み：クエストに 前後のストーリーを 挟む／連れて行けないキャラ ---------- */
 {const _qw=qWave;qWave=async function(i){
-  const q=QR.q,w=q&&q.waves[i];
-  if(w&&w.pre&&!QR.failed){await w.pre();hideMsg();}
+  const q=QR.q,w=q&&q.waves[i],prev=S.mode;
+  /* ストーリー演出（scene）のあと、探索画面（map）へ 戻す */
+  const back=async()=>{hideMsg();if(prev==='map'){await fade(1);S.mode='map';S.scene=null;await fade(0);}};
+  if(w&&w.pre&&!QR.failed){await w.pre();await back();}
   await _qw.apply(this,arguments);
-  if(w&&w.post&&!QR.failed){await w.post();hideMsg();}};}
+  if(w&&w.post&&!QR.failed){await w.post();await back();}};}
 {const _rq=runQuest;runQuest=async function(q,party,online,me){
   if(q&&q.ban&&party&&party.some(p=>q.ban.includes(p.id))){
     menuCtx();await say('このクエストには '+q.ban.filter((x,i,a)=>a.indexOf(x)===i).map(x=>PNAME[x]).join('・')+' を 連れて行けない。\n（編成し直してね）');hideMsg();return {ok:false};}
@@ -10207,6 +10209,81 @@ exQuest({id:'if3',name:'【IF③】聖女ヲ殺シタ殺戮ノ悪魔',tier:8,lv:
         '金の瞳の 魔法剣士が、君たちの 隣に 並んだ。']);hideMsg();
       await card(['——これは、もしもの話。','聖女は 死に、悪魔は 止まらなかった。','……それでも、止めてくれる 誰かが いた。','IFルート③　完'],2100);}}
   ]});
+/* ===== 講座クエスト：ギミックの手引き（チュートリアル）=====
+   強敵が 使う 仕掛けを 6つ、教官と 一緒に 練習する。オンライン対応（何度でも 挑める）。 */
+
+/* ---------- 練習用の敵 ---------- */
+FOES.tutgolem={...UB,n:'訓練ゴーレム',k:'guardian',col:'#8a8a9a',
+  moves:[{n:'パンチ',k:'one',m:1.0,w:3},{n:'岩石投げ',k:'all',m:.5,w:2},
+    CH('大振りの一撃','all',2.2,'訓練ゴーレムが 拳を 振りかぶった……！\n（全体攻撃の予兆！）',(f,b)=>b.round>=2,3)]};
+FOES.tutpct={...UB,n:'毒沼の主',k:'slime',col:'#4a7a3a',pctDmg:.09,
+  moves:[{n:'毒のしぶき',k:'all',m:.6,w:3},{n:'とびつき',k:'one',m:1.0,w:3}]};
+FOES.tutcap={...UB,n:'鋼のかかし',k:'knight',col:'#9a9aa8',capPct:.1,
+  moves:[{n:'しなる腕',k:'one',m:.9,w:3},{n:'ぶん回し',k:'all',m:.5,w:2}]};
+FOES.tutmirror={...UB,n:'鏡の剣士',k:'knight',col:'#b8c8e8',learn:true,
+  moves:[{n:'居合',k:'one',m:1.0,w:3},{n:'返し斬り',k:'all',m:.5,w:2}]};
+FOES.tutshield={...UB,n:'結界の番人',k:'guardian',col:'#7a8ac8',tutS:true,
+  moves:[{n:'光の槍',k:'one',m:1.0,w:3},{n:'聖域の波',k:'all',m:.5,w:2}]};
+async function tutStatusAI(f){
+  if(!alivePty().length)return;
+  const L=[['ねばねばの糸','one',.4,3,{bind:1}],['沈黙の歌','all',.3,3,{seal:1}],['かみつき','one',1.0,3]];
+  let tot=L.reduce((a,x)=>a+x[3],0),r=rr()*tot,pick=L[0];for(const x of L){r-=x[3];if(r<=0){pick=x;break;}}
+  await exAtk(f,pick[0],pick[1],pick[2],pick[4]||{});}
+async function tutEnrage(f){
+  await say(`${f.n}の 力が 臨界を 超えた！\n（本番では 全滅するが、今回は 練習。全員の HPが 半分に なるだけ）`,2200);
+  if(typeof fxSnd==='function')fxSnd('boom');shakeScreen();
+  for(const m of alivePty()){exHurt(m,Math.round(stat(m,'hp')*.5));}
+  updateParty();f.enrage=B.round+8;
+  if(!alivePty().length)B.end='lose';}
+FOES.tuttimer={...UB,n:'砂時計のスライム',k:'slime',col:'#c8a84a',enrage:9,ai:tutStatusAI,enrageFn:tutEnrage};
+
+/* 結界の番人：結界の核を すべて 壊すまで 攻撃が 通らない */
+ROUND_START.push(async b=>{
+  if(b.round!==1)return;const f=b.foes.find(x=>x.tutS);if(!f)return;
+  f.immune=true;f.immuneCol='#9ac8ff';
+  [{x:120,y:60},{x:120,y:132}].forEach((pos,i)=>{exSpawn(FOES.qbud,{id:'qbud',hp:3,mhp:3,pos,budOf:f,n:'結界の核'+'AB'[i],agi:1,def:0,atk:0});});
+  await say('結界の番人を 光の結界が 包んでいる！\n（結界が ある間、本体には 攻撃が 届かない。\n　「結界の核」を 3発ずつ 当てて 壊そう）',2600);});
+ROUND_END.push(async b=>{
+  const f=b.foes.find(x=>x.tutS&&!x.dead);if(!f||!f.immune)return;
+  if(!b.foes.some(x=>x.budOf===f&&!x.dead)){f.immune=false;
+    if(typeof fxSnd==='function')fxSnd('shatter');
+    await say('結界の核が すべて 砕けた！\n結界が 消えていく……！（今なら 本体に 攻撃が 通る）',1800);}});
+
+/* ---------- クエスト ---------- */
+exQuest({id:'tut1',name:'【講座】ギミックの手引き',tier:1,lv:20,rec:20,alias:'village',bg:'front',tut:true,
+  desc:'強い敵が 使う「仕掛け」を、教官と 一緒に 6つ 練習する。\nオンラインでも 遊べる。何度でも 挑戦できる。\n（ためる攻撃・割合ダメージ・ダメージ上限・反撃・結界・状態異常と時間切れ）',
+  waves:[
+   {pre:async()=>{
+      await card(['【講座】','ギミックの手引き'],1800);
+      await to('front',[{id:'coach',x:90},{id:'rei',x:170,flip:true}]);
+      await D([['教官','来たな。強い敵は、ただ殴ってくるだけじゃない。「仕掛け」を使ってくる'],
+        ['教官','今日は 6つ、実際に 体験してもらう。やられても 大丈夫だ。何度でも やり直せる'],
+        ['教官','まずは「ためる攻撃」だ']]);hideMsg();},
+    say:'【練習①】ためる攻撃\n「〜をためている」と出たら、次のターンに 大技が 来る合図！\n「ぼうぎょ」か シールド技を 使うと 被害を 半分に できる。',
+    lv:20,boss:true,foes:[['tutgolem',{hp:.9,atk:.8}]],
+    post:async()=>{await to('front',[{id:'coach',x:90}]);await D([['教官','よし。予兆が 出たら 守る。これが 基本中の基本だ'],['教官','次は「割合ダメージ」だ']]);hideMsg();}},
+   {say:'【練習②】割合ダメージ\nこの敵は 防御力に 関係なく、最大HPの 一定の割合を 削ってくる。\nHPが 高いほど 痛いが、回復を 忘れなければ 立て直せる。\n（HPが 減ったら 回復を 優先しよう）',
+    lv:20,boss:true,foes:[['tutpct',{hp:.9,atk:.8}]],
+    post:async()=>{await to('front',[{id:'coach',x:90}]);await D([['教官','HPが 半分を 切ったら 回復。倒れてからでは 遅いぞ'],['教官','次は「ダメージの上限」だ']]);hideMsg();}},
+   {say:'【練習③】1撃の上限\nこの敵は、どれだけ 強い技でも 1撃で 与えられるダメージが 最大HPの 10%で 頭打ちになる。\n（本番では もっと 低いことも ある）\n手数の多い「連撃」の技が 有効！',
+    lv:20,boss:true,foes:[['tutcap',{hp:1.2,atk:.8}]],
+    post:async()=>{await to('front',[{id:'coach',x:90}]);await D([['教官','強い一撃より、細かい手数だ。スキル欄に「連撃」と書いてある技を 選ぶと 良い'],['教官','次は「反撃」だ']]);hideMsg();}},
+   {say:'【練習④】反撃\nこの敵は、同じ人が 同じ技を 2回 続けて 使うと 反撃してくる。\n技を 使い分けよう！ 別の技・別の人なら 反撃されない。',
+    lv:20,boss:true,foes:[['tutmirror',{hp:.9,atk:.8}]],
+    post:async()=>{await to('front',[{id:'coach',x:90}]);await D([['教官','同じ技の連打は 禁物だ。MPの 配分も 考えろ'],['教官','次は「結界」だ']]);hideMsg();}},
+   {say:'【練習⑤】結界\n結界が 張られている間は、本体に 攻撃が 通らない。\n「結界の核」を 破壊すれば 結界が 消える！',
+    lv:20,boss:true,foes:[['tutshield',{hp:.9,atk:.8}]],
+    post:async()=>{await to('front',[{id:'coach',x:90}]);await D([['教官','攻撃が 通らない時は、狙う相手を 間違えていないか 確認しろ'],['教官','最後は「状態異常」と「時間切れ」だ']]);hideMsg();}},
+   {say:'【練習⑥】状態異常と時間切れ\n拘束されると 行動できず、封印されると スキルが 使えない（どちらも 2ターン）。\nまた、敵の頭上に「時間切れまで ○」と出る。0になると 本番では 全滅！\n（今回は 練習なので 全員のHPが 半分になるだけ）\n時間内に 倒そう！',
+    lv:20,boss:true,foes:[['tuttimer',{hp:1.4,atk:.8}]],
+    post:async()=>{
+      await to('front',[{id:'coach',x:90},{id:'rei',x:170,flip:true}]);
+      await D([['教官','全部 やり遂げたな。おさらいだ'],
+        '・予兆が 出たら ぼうぎょ\n・割合ダメージは 回復で 立て直す\n・上限がある敵には 連撃\n・同じ技の連打は 反撃される\n・結界は 核を 壊す\n・時間切れまでに 倒す',
+        ['教官','これで 強敵と 戦う 準備は できた。……行ってこい']]);hideMsg();}}
+  ]});
+/* 一覧の先頭に、日替わりの対象から除く */
+{const q=QUESTS.pop();QUESTS.unshift(q);}
 /* ===== EXスキル：極限クエストのクリアで解放（技一覧に追加） ===== */
 PROF.exsk=PROF.exsk||{};
 const EXS={
@@ -10452,7 +10529,7 @@ const TITLES=[
  ['login7','皆勤賞','ログインを 7日 連続',()=>(PROF.login&&PROF.login.streak)|0,7],
  ['login30','日課の鬼','ログインを 30日 連続',()=>(PROF.login&&PROF.login.streak)|0,30],
 ];
-TITLES.push(['ex2','紫薔薇の使徒','極限難易度【マナ】を クリア',()=>D_('xm1'),1],['ex3','神呪を背負う者','極限難易度【マリア】を クリア',()=>D_('xr1'),1],['ex5','薔薇と呪いの果て','極限難易度【終焉Ⅴ】を クリア',()=>D_('xw1'),1],['exa','終焉の庭園に 立つ者','【覚醒】クエストを 1つ クリア',()=>D_('xa1')+D_('xa2')+D_('xa3'),1],['if3','聖女を喰らった悪魔','IFルート③【聖女ヲ殺シタ殺戮ノ悪魔】を クリア',()=>D_('if3'),1],['if2','復讐を遂げた龍人','IFルート②【復讐ニ堕チタ龍人】を クリア',()=>D_('if2'),1],['if1','竜を殺した聖女','IFルート①【終焉龍ヲ殺シタ聖女】を クリア',()=>D_('if1'),1],['exs','EXの探求者','EXスキルを 5つ 解放',()=>Object.keys(PROF.exsk||{}).length,5]);
+TITLES.push(['ex2','紫薔薇の使徒','極限難易度【マナ】を クリア',()=>D_('xm1'),1],['ex3','神呪を背負う者','極限難易度【マリア】を クリア',()=>D_('xr1'),1],['ex5','薔薇と呪いの果て','極限難易度【終焉Ⅴ】を クリア',()=>D_('xw1'),1],['exa','終焉の庭園に 立つ者','【覚醒】クエストを 1つ クリア',()=>D_('xa1')+D_('xa2')+D_('xa3'),1],['tut','ギミックの優等生','【講座】ギミックの手引きを クリア',()=>D_('tut1'),1],['if3','聖女を喰らった悪魔','IFルート③【聖女ヲ殺シタ殺戮ノ悪魔】を クリア',()=>D_('if3'),1],['if2','復讐を遂げた龍人','IFルート②【復讐ニ堕チタ龍人】を クリア',()=>D_('if2'),1],['if1','竜を殺した聖女','IFルート①【終焉龍ヲ殺シタ聖女】を クリア',()=>D_('if1'),1],['exs','EXの探求者','EXスキルを 5つ 解放',()=>Object.keys(PROF.exsk||{}).length,5]);
 const TIT=Object.fromEntries(TITLES.map(t=>({[t[0]]:t})).reduce((a,o)=>a.concat(Object.entries(o)),[]));
 const titleName=id=>TIT[id]?'【'+TIT[id][1]+'】':'';
 let _tchk=false;
@@ -12274,7 +12351,7 @@ async function bakMenu(){
     wild6:'warm',hunt6:'night',front6:'tense',forest6:'mist',outo7:'town',lili7:'village',town7:'town',search7:'tense',road7:'night',castle7:'dark',inside7:'dark',
     q_q1:'mist',q_q2:'cave',q_q3:'fort',q_q4:'dark',q_q5:'holy',q_q6:'dark',q_q7:'dark',q_raid1:'final'};
   const mapTrack=n=>{if(!n)return 'sun';if(MAPS[n])return MAPS[n];
-    if(/^q_(e\d|sz|g1|x|if)/.test(n))return 'dark';if(/^q_(w|r)\d/.test(n))return 'fort';if(/^q_(tr|dx)/.test(n))return 'quest';return 'sun';};
+    if(/^q_(e\d|sz|g1|x|if)/.test(n))return 'dark';if(/^q_(w|r)\d/.test(n))return 'fort';if(/^q_(tr|dx|tut)/.test(n))return 'quest';return 'sun';};
   let lastMapTrack=null;
   const bossTrack=mq=>{if(/^q_x(m|a1)/.test(mq))return 'rosebgm';if(/^q_x(r|a2)/.test(mq))return 'cursebgm';if(/^q_xg1/.test(mq))return 'clockbgm';if(/^q_xg2/.test(mq))return 'mirrorbgm';if(/^q_(xg3|if)/.test(mq))return 'dragonbgm';
     return /^q_(e\d|sz|g1|x|raid)/.test(mq)?'final':'boss';};
