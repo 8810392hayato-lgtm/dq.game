@@ -8160,7 +8160,7 @@ async function workshop(){
     const i=await choose(`工房　所持金${PROF.gold}G`,[{l:'強化'},{l:'合成',r:'3つ → 上位1つ'},{l:'売却'}]);
     if(i<0)return;
     if(i===0){
-      const g=await pickGear('強化する装備（持ち物のみ）',x=>!x.uni);if(!g)continue;
+      const g=await pickGear('強化する装備（持ち物のみ）',x=>true);if(!g)continue;
       const p=g.plus||0;if(p>=10){await say('これ以上は 強化できない。（+10が 上限）');continue;}
       const cost=ECOST[Math.min(7,g.rk)]*(p+1);
       const ok=await yesno(`${gname(g)}を +${p+1}に 強化？\n費用 ${cost}G　成功率 ${Math.round(plusRate(p)*100)}%\n（失敗しても 装備は 壊れない）`);
