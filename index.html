@@ -8066,13 +8066,14 @@ async function questReward(q,online,me){
   /* 専用ドロップ：参加者1人ごとに1回ずつ抽選（全員同じ乱数列で判定） */
   const roll=(w,p,label)=>{if(N>1)lines.push(`${label}の抽選（${Math.round(p*100)}%×${N}人分）`);
     let hit=0;owners.forEach(()=>{if(rr()<p)hit++;});
-    for(let h=0;h<hit;h++){PROF.inv.push({...w,u:PROF.uid++});dexGear(w);lines.push('★ '+w.n+' を手に入れた！！'+(w.only?'（'+PNAME[w.only]+'専用）':'')+(N>1?'　（全員に配布）':''));}};
+    for(let h=0;h<hit;h++){window.__DROPFX=w;PROF.inv.push({...w,u:PROF.uid++});dexGear(w);lines.push('★ '+w.n+' を手に入れた！！'+(w.only?'（'+PNAME[w.only]+'専用）':'')+(N>1?'　（全員に配布）':''));}};
   if(q.id==='q7'&&S.party.some(m=>m.id==='lilith'))roll(BENI,.01,'紅ノ支配');
   if(q.uniq){const w=UNIW[q.uniq];if(S.party.some(m=>m.id===w.only))roll(w,.05,w.n);}
   if(q.recruit){q.recruit.forEach(id=>{if(!PROF.have[id]){PROF.have[id]=true;const ow=PCHARS.filter(x=>!NEWC.includes(x)||(PROF.have[x]&&x!==id)).map(x=>PROF.chars[x].lv).sort((p,c)=>c-p).slice(0,4);
     const lv=Math.max(5,Math.min(profCap(),Math.round((ow.reduce((p,c)=>p+c,0)/Math.max(1,ow.length))*.8)));PROF.chars[id].lv=lv;PROF.chars[id].exp=0;lines.push('★ '+PNAME[id]+' が 仲間に なった！！（Lv'+lv+'）');}});}
   if(typeof gemGain==='function'){const gg=gemGain(q,!PROF.done[q.id]);if(gg>0)lines.push('★ ジェム +'+gg+' を手に入れた！');}
   PROF.done[q.id]=(PROF.done[q.id]||0)+1;saveProf();
+  if(window.__DROPFX){const w=window.__DROPFX;window.__DROPFX=null;try{await uniDropFx(w);}catch(e){}}
   await say(lines.join('\n'));hideMsg();
   return lines;
 }
@@ -12509,6 +12510,32 @@ async function markStoryCleared0(){
   },400);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mk);else mk();
 })();
+
+/* ===== 専用武器ドロップ演出：スキップ中でも強制停止して派手に見せる ===== */
+window.uniDropFx=async function(w){
+  if(window.skipSet)skipSet(false);
+  const st=document.createElement('style');st.textContent=`
+  #udrop{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(255,230,120,.95) 0%,rgba(40,20,0,.96) 70%);color:#fff;text-align:center;opacity:0;transition:opacity .35s;overflow:hidden;cursor:pointer}
+  #udrop.on{opacity:1}
+  #udrop .rays{position:absolute;width:260vmax;height:260vmax;left:50%;top:50%;margin:-130vmax 0 0 -130vmax;background:repeating-conic-gradient(rgba(255,240,160,.35) 0 6deg,rgba(255,240,160,0) 6deg 18deg);animation:udspin 7s linear infinite}
+  @keyframes udspin{to{transform:rotate(360deg)}}
+  #udrop .t1{position:relative;font-size:15px;letter-spacing:.3em;color:#ffe45a;text-shadow:0 0 8px #000;margin-bottom:10px;animation:udpop .6s both}
+  #udrop .t2{position:relative;font-size:clamp(26px,8vw,44px);font-weight:bold;color:#fff;text-shadow:0 0 14px #ffd23a,0 0 30px #ff9a00,0 2px 0 #000;animation:udpop .8s .3s both}
+  #udrop .t3{position:relative;font-size:15px;margin-top:12px;color:#ffe9a8;text-shadow:0 1px 3px #000;animation:udpop .8s .7s both}
+  #udrop .t4{position:relative;font-size:11px;margin-top:26px;color:#cbb;opacity:.8;animation:udpop .8s 1.4s both}
+  @keyframes udpop{0%{opacity:0;transform:scale(.4)}70%{transform:scale(1.12)}100%{opacity:1;transform:scale(1)}}`;
+  document.head.appendChild(st);
+  const d=document.createElement('div');d.id='udrop';
+  const stats=[['攻',w.atk],['魔',w.mag],['防',w.def],['速',w.agi],['HP',w.hp]].filter(x=>x[1]).map(x=>x[0]+'+'+x[1]).join('  ');
+  d.innerHTML=`<div class="rays"></div><div class="t1">★ 専用武器 入手 ★</div><div class="t2">${w.n}</div><div class="t3">${w.only&&typeof PNAME!=='undefined'&&PNAME[w.only]?PNAME[w.only]+'専用':''}<br>${stats}</div><div class="t4">タップで 閉じる</div>`;
+  document.body.appendChild(d);
+  requestAnimationFrame(()=>d.classList.add('on'));
+  try{fxSnd('boom');}catch(e){}
+  setTimeout(()=>{try{fxSnd('chime');}catch(e){}},500);
+  try{if(typeof shakeScreen==='function')shakeScreen();}catch(e){}
+  await new Promise(r=>{let ok=false;setTimeout(()=>ok=true,1400);d.onclick=()=>{if(ok)r();};setTimeout(r,window.__AUTO?600:6000);});
+  d.classList.remove('on');await sleep(350);d.remove();st.remove();
+};
 /* ===== 遊ぶ前の注意書き（初回に自動表示・タイトルからいつでも再表示） ===== */
 const NOTK='dq-notice-v1';
 function showNotice(){
