@@ -808,9 +808,11 @@ async function runBattle(ids,boss,opts){
     return {...f,id,mhp:f.hp,mbar:f.barrier||0,held:0,flash:0,dead:false,alpha:1,n:f.n+(cnt[id]>1?'ABC'[seen[id]-1]:'')};});
   B={foes,floats:[],boss,end:null,round:0,bg:opts.bg||(S.map.startsWith('cave')?'cave':'front'),opts,chant:0};
   const invSnap=snapInv();
+  const opF=boss?foes.find(f=>f.openFx):null;if(opF)foes.forEach(f=>f.alpha=0);
   const prevMode=S.mode;S.mode='battle';hideMsg();updateParty();await fade(0);
-  if(typeof playEncounter==='function')await playEncounter();
-  if(boss&&typeof playBossIntro==='function')await playBossIntro(foes[0]);
+  if(opF){try{await opF.openFx(opF);}catch(e){}foes.forEach(f=>f.alpha=1);}
+  else{if(typeof playEncounter==='function')await playEncounter();
+  if(boss&&typeof playBossIntro==='function')await playBossIntro(foes[0]);}
   if(opts.intro!==false){
     const names=[...new Set(foes.map(f=>f.n.replace(/[ABC]$/,'')))];
     await say(opts.intro||(names.join('、')+' があらわれた！'),1100);}
@@ -964,11 +966,13 @@ async function commandFor1(m){
     }
   }
 }
+/* 合体技：二人の 能力を 合算 */
+function cmbV(m,s,k,buff){let v=stat(m,k)*buff;const p=(s.special==='combo'&&typeof B!=='undefined'&&B)?B.cmbP:null;if(p)v+=stat(p,k)*(p.buff>0?1.45:1)*(p.ao>0?1.6:1);return v;}
 function dmgTo(m,s,f){
   const buff=(m.buff>0?1.45:1)*(m.ao>0?1.6:1);let base;
   let sp=s.p;if(s.hpScale)sp=s.p*(.45+1.1*Math.max(0,m.hp)/stat(m,'hp'));
-  if(s.k==='phys')base=stat(m,'atk')*buff*sp-f.def*.5;
-  else base=stat(m,'mag')*buff*s.p*1.25-(s.pierce?0:f.def*.25);
+  if(s.k==='phys')base=cmbV(m,s,'atk',buff)*sp-f.def*.5;
+  else base=cmbV(m,s,'mag',buff)*s.p*1.25-(s.pierce?0:f.def*.25);
   let mult=.9+rr()*.2,crit=false,weak=false,bonus=false;
   if(s.k==='phys'&&rr()<(s.crit||.07)){mult*=1.7;crit=true;}
   if(s.el&&WEAK[f.id]===s.el){mult*=1.4;weak=true;}
@@ -978,7 +982,7 @@ function dmgTo(m,s,f){
   return {d:Math.max(1,Math.round(base*mult)),crit,weak,bonus};
 }
 async function partyAct(m,c){
-  if(m.hp<=0)return;const n=pn(m);m.actT=14;
+  if(m.hp<=0)return;const n=pn(m);m.actT=14;B.cmbP=null;
   if(c.t==='bound'){await say(`${n}は 拘束されて 動けない！`,800);return;}
   if(c.t==='rest'){await say(`${n}は 反動で 動けない……！`,800);return;}
   if(c.t==='swap'){const nm=S.roster[c.to];const idx=S.party.indexOf(m);if(idx<0||!nm||nm.hp<=0)return;S.party[idx]=nm;nm.guard=false;updateParty();
@@ -1016,7 +1020,7 @@ async function partyAct(m,c){
     const pm=S.party.find(x=>x.id===c.s.combo&&x.hp>0),pc=pm&&(B.cmds||[]).find(x=>x.m===pm&&x.t==='skill'&&x.s&&x.s.special==='combo'&&!x.done&&x.s.combo===m.id);
     const nm0=pn(m);
     if(!pm||!pc||m.mp<c.s.mp||pm.mp<pc.s.mp){await say(`${nm0}の ${c.s.n}！\nしかし 相方の呼吸が 合わず 不発に終わった……\n（${pm?pn(pm):'相方'}も 同じ技を選ばないと 発動しない）`,1700);return;}
-    pc.done=true;pm.mp-=pc.s.mp;pm.actT=14;comboPart=pm;
+    pc.done=true;pm.mp-=pc.s.mp;pm.actT=14;comboPart=pm;B.cmbP=pm;
   }
   const s=c.t==='atk'?{n:'こうげき',k:'phys',p:1,t:'one'}:c.s;
   if(c.t==='skill'){if(m.mp<s.mp){await say(`${n}は MPが足りない！`,800);return;}m.mp-=s.mp;}
@@ -1059,12 +1063,13 @@ async function partyAct(m,c){
       if(!f||f.dead)continue;
       const p=foePos(f);
       if(f.noelia&&B.round<=30){const o0=res.get(f);if(h===0){f.seen=f.seen||[];if(f.seen.includes(s.n)){const o=o0||{d:0};o.nul=1;res.set(f,o);continue;}f.seen.push(s.n);(f.learnQ=f.learnQ||[]).push({n:s.n,p:s.p||1,by:m.id});}else if(o0&&o0.nul)continue;}
-      if(f.eva&&!s.hold&&!(f.held>0)&&s.t!=='all'&&rr()<f.eva*(hits>1?.55:1)){
+      if(f.eva&&m.id!=='lilithX'&&!s.hold&&!(f.held>0)&&s.t!=='all'&&rr()<f.eva*(hits>1?.55:1)){
         const o=res.get(f)||{d:0,miss:0};o.miss=(o.miss||0)+1;res.set(f,o);floatTxt(p.x,p.y-24,'MISS','#9ab');continue;}
       if(f.mukan&&f.ronpa&&!(f.truthUntil>=B.round)){if(h===0){(B.legActs=B.legActs||[]).push({by:m.id,n:s.n,c:s.n==='こうげき'?'atk':s.t==='all'?'all':(s.hits||1)>1?'multi':s.k==='mag'?'mag':'one'});const simple=(s.hits||1)===1&&s.t!=='all'&&(s.p||1)<=1.5;if(!(simple&&rr()<.35)){const o=res.get(f)||{d:0};o.ronpa=1;res.set(f,o);continue;}}else{const o0=res.get(f);if(o0&&o0.ronpa)continue;}}
       if(f.awoken&&f.mukan&&!f.noRishu&&s.n!=='こうげき'&&!hold(m,'rishu')){if(h===0){f.rishuM=f.rishuM||{};const u=f.rishuM[s.n];if(u!=null&&B.round<=u){const o=res.get(f)||{d:0};o.nul=1;o.rishu=1;res.set(f,o);continue;}f.rishuM[s.n]=B.round+3;(f.learnQ=f.learnQ||[]).push({n:s.n,p:s.p||1,by:m.id,t:s.t});}else{const o0=res.get(f);if(o0&&o0.rishu)continue;}}
       if(f.learn&&h===0&&s.t!=='all'){if(f.lastMove===s.n&&f.lastBy===m.id&&!hold(m,'learn')){const dc=hitParty(f,m,.9);const o=res.get(f)||{d:0};o.cnt=dc;res.set(f,o);continue;}f.lastMove=s.n;f.lastBy=m.id;}
       if(f.blocks>0&&s.t!=='all'){f.blocks--;floatTxt(p.x,p.y-24,'BLOCK','#9ab');const o=res.get(f)||{d:0};o.blk=(o.blk||0)+1;res.set(f,o);continue;}
+      if((f.shiniki||(f.liquid&&s.k==='phys'))&&!(typeof mrPierce==='function'&&mrPierce(m))){const o=res.get(f)||{d:0};o.liq=(o.liq||0)+1;res.set(f,o);if(typeof mrLiq==='function')mrLiq(f,m,h);continue;}
       if(f.immune){const o=res.get(f)||{d:0};o.imm=(o.imm||0)+1;res.set(f,o);continue;}
       if(s.acc&&rr()>s.acc){const o=res.get(f)||{d:0};o.miss=(o.miss||0)+1;res.set(f,o);floatTxt(p.x,p.y-24,'MISS','#9ab');continue;}
       const r=dmgTo(m,s,f);if(f.dr)r.d=Math.max(1,Math.round(r.d*f.dr));if(window.DMGMODS)for(const fn of DMGMODS)fn(m,s,f,r,h);if(window.DMGCAP)DMGCAP(m,s,f,r);
@@ -1081,6 +1086,7 @@ async function partyAct(m,c){
   for(const [f,o] of res){
     if(!o.d&&o.ronpa){m.sealed=Math.max(m.sealed||0,2);lines.push(`${f.n}は その攻撃を 論破した——「却下だ」\n（${pn(m)}は 不条理感に 苛まれ、スキルを 封じられた）`);continue;}
     if(!o.d&&o.nul){lines.push(o.rishu?`${f.n}は その技を 履修済みだ！（3ターンの間 効かない）`:`${f.n}は その技を 見切っている！ もう 効かない！`);continue;}
+    if(!o.d&&o.liq){lines.push(f.shiniki?`神域の中で ${f.n}は 絶対だ。\n攻撃は 届かない……`:`${f.n}の 体が 液体化した！\n攻撃は 水を すり抜けた……（物理攻撃は 効かない）`);continue;}
     if(!o.d&&o.imm){lines.push(`${f.n}には 攻撃が すり抜けてしまう！`);continue;}
     if(!o.d&&o.bar){lines.push(`${f.n}の 結界に ${o.bar}のダメージ！${o.brk?' 結界が 砕け散った！':''}`);continue;}
     if(!o.d&&o.cnt){lines.push(`${f.n}は 同じ技を学習していた！ カウンターで ${pn(m)}は ${o.cnt}のダメージ！`);continue;}
@@ -8823,6 +8829,7 @@ HITHOOKS.push((m,s,f,r)=>{
 /* --- 自分たちの直接ダメージ（先制など）--- */
 function exHit(m,s,f){
   if(!f||f.dead)return 0;if(f.immune)return 0;
+  if((f.shiniki||(f.liquid&&s.k==='phys'))&&!(typeof mrPierce==='function'&&mrPierce(m))){if(typeof mrLiq==='function')mrLiq(f,m,0);return 0;}
   const r=dmgTo(m,s,f);if(f.dr)r.d=Math.max(1,Math.round(r.d*f.dr));for(const fn of DMGMODS)fn(m,s,f,r,0);DMGCAP(m,s,f,r);
   const p=foePos(f);
   if(f.barrier>0){f.barrier-=r.d;if(f.barrier<0)f.barrier=0;floatTxt(p.x,p.y-20,String(r.d),'#9fd8ff');return r.d;}
@@ -8919,7 +8926,7 @@ HERO.mana={n:'マナ',job:'邪神',c:'#4a2470',hair:'#8a52cc',hp:[42,8.6],mp:[30
   {n:'ローズ・ソーン',lv:1,mp:4,t:'one',k:'mag',p:1.9,el:'闇',rose:1},
   {n:'ヴァイオレット・ブルーム',lv:1,mp:9,t:'all',k:'mag',p:1.5,rose:1},
   {n:'茨の檻',lv:1,mp:8,t:'one',k:'mag',p:1.2,hold:true,stun:.75,rose:1},
-  {n:'邪神の微笑',lv:1,mp:10,t:'self',k:'buff',dur:4,msg:'マナは 妖しく 微笑んだ……\n邪神の魔力が 満ちていく！'},
+  {n:'邪神の微笑',lv:1,mp:10,t:'self',k:'buff',dur:4,msg:'マナは にっこり 笑った！\n邪神の魔力が 満ちていく！'},
   {n:'紫苑の呪い',lv:5,mp:12,t:'one',k:'mag',p:2.4,vulnT:3,el:'闇'},
   {n:'吸命の薔薇',lv:8,mp:14,t:'one',k:'mag',p:2.6,drain:.15,rose:1},
   {n:'薔薇の祝福',lv:10,mp:16,t:'allally',k:'heal',p:1.3},
@@ -9205,7 +9212,7 @@ async function manaAI(f){
   let tot=L.reduce((a,x)=>a+x[3],0),r=rr()*tot,pick=L[0];for(const x of L){r-=x[3];if(r<=0){pick=x;break;}}
   await exAtk(f,pick[0],pick[1],pick[2],pick[4]||{});}
 async function manaEnrage(f){
-  await say('マナ「……もう 十分 遊んだわ」\n邪神の魔力が 天へと 昇っていく——',1800);
+  await say('マナ「えへへ、もう 十分 遊んだ！ ……これで おしまいだよ！」\n邪神の魔力が 天へと 昇っていく——',1800);
   await playUltAt({id:'mana',lv:1},foePos(f),partyCenter(),'アルジェクト・ハイゼルト',ULTS.find(u=>u.sk==='アルジェクト・ハイゼルト'));
   await exWipe('天から 叩きつけられた 魔力の塊が すべてを 呑みこんだ……\n——時間切れ。');}
 /* 刻印の判定・蕾の開花・結界の解除 */
@@ -9231,7 +9238,7 @@ ROUND_END.push(async b=>{
       const lines=[`紫薔薇の蕾が ${n}輪 咲き誇った……！`,`マナは ${h}回復した！`];
       for(const x of alivePty()){const d=hitParty({...f,pctDmg:.38*n,rage:1},x,1);lines.push(`${pn(x)}は ${d}のダメージ！`);if(x.hp<=0)lines.push(`${pn(x)}は たおれた！`);}
       updateParty();await say(lines.join('\n'),2200);}
-    if(!f.awake&&f.hp<=f.mhp*.5){f.awake=true;f.rage=1.25;await say('マナ「ふふ……少しは 楽しませてくれるのね」\n邪神の魔力が 膨れあがった！（攻撃力 ×1.25）',1700);}
+    if(!f.awake&&f.hp<=f.mhp*.5){f.awake=true;f.rage=1.25;await say('マナ「おっ、やるね！ ボク ちょっと 本気 出しちゃうよ！」\n邪神の魔力が 膨れあがった！（攻撃力 ×1.25）',1700);}
   }});
 ROUND_START.push(async b=>{
   for(const f of b.foes){
@@ -9242,8 +9249,8 @@ ROUND_START.push(async b=>{
     const pair=b.foes.some(x=>x.mariaB&&!x.dead);
     (pair?[{x:154,y:58},{x:154,y:134}]:[{x:118,y:66},{x:118,y:122}]).forEach((pos,i)=>{b.foes.push({...FOES.qbud,id:'qbud',hp,mhp:hp,mbar:0,held:0,flash:0,dead:false,alpha:1,pos,budOf:f,n:'紫薔薇の蕾'+'AB'[i],agi:1,def:0,atk:0});});
     if(typeof fxSnd==='function')fxSnd('rose');
-    await say(`マナ「咲きなさい」\n茨の結界が マナを 包み、紫薔薇の蕾が ${2}輪 芽吹いた！\n（蕾は ${hp}発 当てれば 散る。3ターン以内に 散らさないと 開花する！\n　結界の間、マナには 攻撃が 届かない）`,2600);}});
-FOES.qmanaB={...UB,n:'マナ',k:'maid',spr:'mana',col:'#4a2470',manaB:true,capPct:.006,pctDmg:.22,enrage:25,ai:manaAI,enrageFn:manaEnrage,deathMsg:'マナ「……ふふ。あなたたち、面白いわね」'};
+    await say(`マナ「咲けー！」\n茨の結界が マナを 包み、紫薔薇の蕾が ${2}輪 芽吹いた！\n（蕾は ${hp}発 当てれば 散る。3ターン以内に 散らさないと 開花する！\n　結界の間、マナには 攻撃が 届かない）`,2600);}});
+FOES.qmanaB={...UB,n:'マナ',k:'maid',spr:'mana',col:'#4a2470',manaB:true,capPct:.006,pctDmg:.22,enrage:25,ai:manaAI,enrageFn:manaEnrage,deathMsg:'マナ「あちゃー、負けちゃった！ ……でも すっごく 楽しかったよ！」'};
 
 /* ===== ボス：マリア ===== */
 function mariaSpr(f){f.spr='maria'+Math.max(0,Math.min(10,Math.round((f.curse||0)/10)));}
@@ -9285,7 +9292,7 @@ FOES.qmariaB={...UB,n:'マリア',k:'maid',spr:'maria0',col:'#1a1a22',mariaB:tru
 /* ===== 二人同時：紫薔薇と神呪 ===== */
 ROUND_END.push(async b=>{
   const mn=b.foes.find(f=>f.manaB),mr=b.foes.find(f=>f.mariaB);if(!mn||!mr)return;
-  if(mr.dead&&!mn.dead&&!mn.griefD){mn.griefD=true;mn.rage=(mn.rage||1)*1.4;await say('マナ「……マリア？」\n邪神の瞳から 光が 消えた。\n（マナの攻撃力 ×1.4）',2000);}
+  if(mr.dead&&!mn.dead&&!mn.griefD){mn.griefD=true;mn.rage=(mn.rage||1)*1.4;await say('マナ「……マリア？ ……マリアっ！？」\n邪神の瞳から 光が 消えた。\n（マナの攻撃力 ×1.4）',2000);}
   if(mn.dead&&!mr.dead&&!mr.griefD){mr.griefD=true;mr.curse=Math.min(95,(mr.curse||0)+30);mariaSpr(mr);await say('マリア「……マナ。待ってて、すぐ 行くから」\n神呪が 一気に 進んだ！（侵食 +30%）',2000);}});
 
 /* ===== クエスト ===== */
@@ -9301,7 +9308,7 @@ exQuest({id:'xm1',name:'【マナ】紫薔薇の邪神',tier:8,lv:9000,rec:9000,
   waves:[
    {say:'紫薔薇の 香りが 濃くなっていく……\n（番兵は 棘を持つ。攻撃するたびに 最大HPの3%の 反撃を受ける）',lv:8600,boss:true,foes:[['xrknight',{hp:.5,atk:1}],['xrknight',{hp:.5,atk:1}],['xrknight',{hp:.5,atk:1}]]},
    {say:'庭園の門を 巨大な 守り手が ふさいでいる。\n（単体攻撃は 毎ターン 3回まで 弾かれる。全体技なら 通る）',lv:8800,boss:true,foes:[['xrguard',{hp:2.4,atk:1}]]},
-   {say:'薔薇の玉座に 紫の少女が 腰かけていた。\nマナ「いらっしゃい。……退屈させないでね？」\n【制限】時間切れ 25ターン／1撃の上限 最大HPの0.6%\n（4ターンごとの「紫薔薇の刻印」・HP65%と30%で「茨の結界」）',lv:9000,boss:true,foes:[['qmanaB',{hp:2.6,atk:1}]]}]});
+   {say:'薔薇の玉座に 紫の少女が 腰かけていた。\nマナ「いらっしゃーい！ ボクと 遊ぼ！ ……あっ、そこ 茨だから 気を付けてね！」\n【制限】時間切れ 25ターン／1撃の上限 最大HPの0.6%\n（4ターンごとの「紫薔薇の刻印」・HP65%と30%で「茨の結界」）',lv:9000,boss:true,foes:[['qmanaB',{hp:2.6,atk:1}]]}]});
 exQuest({id:'xr1',name:'【マリア】神呪の継承者',tier:8,lv:9500,rec:9500,alias:'fort',bg:'hell',recruit:['maria'],exDrop:'maria',
   desc:'規格外の 呪いを その身に宿す 剣士が 待つ。\n倒すか、耐え抜くか——。\n（クリアで マリアが 仲間になる）',
   waves:[
@@ -9312,7 +9319,7 @@ exQuest({id:'xw1',name:'【終焉Ⅴ】紫薔薇と神呪',tier:8,lv:9999,rec:99
   lock:()=>PROF.have&&PROF.have.mana&&PROF.have.maria,lockMsg:'マナと マリアを 仲間にすると 挑めるようになる。',
   desc:'邪神と 神呪の剣士が 並び立つ、最後の庭園。\n片方を倒すと もう片方が 激昂する。\n（マナと マリアを 仲間にすると 解放）',
   waves:[
-   {say:'紫薔薇の玉座の前で、二人が 待っていた。\nマナ「マリア、手加減は 要らないわ」\nマリア「……ええ。最初から そのつもり」\n【制限】時間切れ 30ターン／1撃の上限 最大HPの0.5%',lv:9999,boss:true,foes:[['qmanaB',{hp:2.0,atk:1,x:{capPct:.005,enrage:30}}],['qmariaB',{hp:2.0,atk:1,x:{capPct:.005,pos:{x:118,y:96}}}]]}]});
+   {say:'紫薔薇の玉座の前で、二人が 待っていた。\nマナ「マリア、手加減は しなくて いいよね！」\nマリア「……ええ。最初から そのつもり」\n【制限】時間切れ 30ターン／1撃の上限 最大HPの0.5%',lv:9999,boss:true,foes:[['qmanaB',{hp:2.0,atk:1,x:{capPct:.005,enrage:30}}],['qmariaB',{hp:2.0,atk:1,x:{capPct:.005,pos:{x:118,y:96}}}]]}]});
 /* 二人戦のときは マナの位置を ずらす */
 ROUND_START.push(async b=>{if(b.round!==1)return;const mn=b.foes.find(f=>f.manaB),mr=b.foes.find(f=>f.mariaB);if(mn&&mr&&!mn.pos){mn.pos={x:186,y:96};mr.pos={x:122,y:100};}});
 /* 鍵つきクエスト */
@@ -9591,7 +9598,7 @@ exQuest({id:'xg3',name:'【終焉Ⅷ】深淵の竜王',tier:8,lv:9999,rec:9999,
     desc:'邪神が 本当の姿を 見せる。\n刻印は 2ターンごとに 2人へ。蕾は 4度 咲く。\n（これを倒せる者は まだ いない）',
     waves:[
      {say:'薔薇の番兵が 棘を 逆立てている……\n（攻撃するたび 最大HPの3%の反撃）',lv:9800,boss:true,foes:[['xrknight',{hp:.9,atk:1.2}],['xrknight',{hp:.9,atk:1.2}],['xrknight',{hp:.9,atk:1.2}]]},
-     {say:'マナ「……全部、咲かせてあげる」\n【制限】時間切れ 22ターン／1撃の上限 最大HPの0.3%\n（刻印は 2ターンごとに 2人！ HP80・60・40・20%で 蕾が 咲く）',lv:9999,boss:true,
+     {say:'マナ「えへへ、ボクの お庭、全部 咲かせちゃうよ！」\n【制限】時間切れ 22ターン／1撃の上限 最大HPの0.3%\n（刻印は 2ターンごとに 2人！ HP80・60・40・20%で 蕾が 咲く）',lv:9999,boss:true,
       foes:[['qmanaB',{hp:3.6,atk:1.4,x:{capPct:.003,enrage:22,pctDmg:.3,markEvery:2,markN:2,budTh:[.8,.6,.4,.2],budHP:[6,8,10,12],rage:1.2}}]]}]});
   exQuest({id:'xa2',name:'【覚醒】神呪の継承者・終焉',tier:8,lv:9999,rec:9999,alias:'fort',bg:'hell',exDrop:'a',lock:lockA,lockMsg:msg,
     desc:'神呪が 彼女を 喰らい尽くそうとしている。\n侵食は 毎ターン15%。進行は 3ターン。\n（これを倒せる者は まだ いない）',
@@ -9602,7 +9609,7 @@ exQuest({id:'xg3',name:'【終焉Ⅷ】深淵の竜王',tier:8,lv:9999,rec:9999,
   exQuest({id:'xa3',name:'【覚醒】終焉の庭園',tier:8,lv:9999,rec:9999,alias:'fort',bg:'hell',exDrop:'a',lock:lockA,lockMsg:msg,
     desc:'二人の 覚醒が 並び立つ。\nこれは もう 戦いではない。\n（これを倒せる者は 伝説になる）',
     waves:[
-     {say:'紫薔薇と神呪が 絡み合う、最後の庭園。\nマナ「マリア、本気で いくわよ」\nマリア「……もちろん」\n【制限】時間切れ 28ターン／1撃の上限 最大HPの0.25%',lv:9999,boss:true,
+     {say:'紫薔薇と神呪が 絡み合う、最後の庭園。\nマナ「マリア、ボク 本気で いくよ！」\nマリア「……もちろん」\n【制限】時間切れ 28ターン／1撃の上限 最大HPの0.25%',lv:9999,boss:true,
       foes:[['qmanaB',{hp:2.8,atk:1.4,x:{capPct:.0025,enrage:28,pctDmg:.3,markEvery:3,markN:2,budTh:[.75,.5,.25],budHP:[6,8,10],rage:1.15}}],
             ['qmariaB',{hp:2.8,atk:1.4,x:{capPct:.0025,pctDmg:.28,curseStep:12,rageK:1.4,shinjuT:3,shinjuHits:2,counterEvery:4,pos:{x:118,y:96}}}]]}]});
 })();
@@ -9614,6 +9621,10 @@ SPR.mukan={"pal":{"h":"#cfd8ec","H":"#ffffff","d":"#93a2c8","b":"#4aa8ff","S":"#
 /* はてな／黒鎌（参考絵ベース） */
 SPR.hatena={"pal":{"h":"#9fd69a","H":"#d4f0c4","d":"#74ac70","g":"#d2e890","y":"#f2ea8e","Y":"#fff7b8","S":"#fcefe9","s":"#e4bcb4","r":"#f2a8a4","E":"#e8b030","e":"#4a2e10","M":"#d27a7a","C":"#2c2c36","c":"#444450","P":"#f6dc4a","q":"#f09a88","B":"#2a2018","b":"#16161c","X":"#16161c","Z":"#e8b830"},"scene":["................................","...............YY...............","..............Y..y..............","..............hhhy..............","..........hhhhhhhhhhhh..........","........hhhHHhhhhhhHHhhh........",".......hhhhHHHhhhhHHHhhhh.......","......hhhhhhhhhhhhhhhhhhhh......",".....hhhhhhhhhhhhhhhhhhhhhh.....",".....hhhhhhhhhhhhhhhhhXhhXh.....","....hhhhhhhhhhhhhhhhhhhXXhhh....","....hhhhhhHhhhhhhhhhhHXhhXhh....","....hhhhhhhhhdhhhhdhhhhZZZZh....","....hhhhhhhhSSSSSSSShhhhhhhh....","....hhhhhhSSSSSSSSSSSShhhhhh....","....hhhhhSSSSSSSSSSSSSShhhhh....","....ghhhSeeeeeSSSSeeeeeShhhg....","....ghhhSeEEEeSSSSeEEEeShhhg....","....ghhhSeEgEeSSSSeEgEeShhhg....","....gyhhSSeEEeSSSSeEEeSShhyg....","....gyhhSSSeeSSSSSSeeSSShhyg....","....gyyhSrrSSSSSSSSSSrrShyyg....","....gyyhSSSSSSSMMSSSSSSShyyg....","....gyyyhSSSSSSSSSSSSSShyyyg....","....gyyyhSSSsSSSSSSsSSShyyyg....",".....gyyhhSSSSSSSSSSSShhyyg.....",".....gyyyhhSSSSSSSSSShhyyyg.....",".....gyyyhCCCCCCCCCCCChyyyg.....",".....gyyySSCCCCCCCCCCSSyyyg.....","....gyyySSSSCCCCCCCCSSSSyyyg....","...ygCCCCSSsCCCCCCCCsSSCCCCgy...","..ygCCCCCcCCCCCCCCCCCCcCCCCCgy..","..ygCCCCCcCCCCCCCCCCCCcCCCCCgy..","..ygCCCCCcCCCPCCCCPCCCcCCCCCgy..","..ygCCCCCcCCCPPCCPPCCCcCCCCCgy..","..ygCCCCCcCPPPPPPPPPPCcCCCCCgy..","..ygCCCCCcCPBPPPPPPBPCcCCCCCgy..","..ygCCCCCcCPPPPPPPPPPCcCCCCCgy..","..ygCCCCCcCPqPPBBPPqPCcCCCCCgy..","..ygCCCCCcCCPPPPPPPPCCcCCCCCgy..","..yyCCCCCcCCCCCCCCCCCCcCCCCCyy..",".ygyCCCCCcCCCCCCCCCCCCcCCCCCygy.",".yyy.CCCCCCCCCCCCCCCCCCCCCC.yyy.",".yy...cccccccccccccccccccc...yy.","..y......SSSSSS..SSSSSS......y..",".........SSSSSS..SSSSSS.........","........BBBBBBB..BBBBBBB........","........bbbbbbb..bbbbbbb........"],"map":{"down":["........Y.......",".....hhhhhh.....","...hhhhhhhhhh...","..hhhhhhhhhhXh..","..hhhhSSSShhhh..","..ghSeeSSeeehh..","..ghSeESSeEShy..","..gySSSSMSSShy..","...yhSSSSSShyg..","...yySCCCCCSyg..",".yCCCCCCCCCcCCg.",".yCCCCCPCPCcCCg.",".yCCCCPPPPPcCCg.",".yCCCCCCCCCcCCy.",".y.cccccccccc..y","....BBBB.BBB...."],"up":["........Y.......",".....hhhhhh.....","...hhhhhhhhhh...","..hhhhhhhhhhXh..","..hhhhSSSShhhh..","..ghSeeSSeeehh..","..ghSeESSeEShy..","..gySSSSMSSShy..","...yhSSSSSShyg..","...yySCCCCCSyg..",".yCCCCCCCCCcCCg.",".yCCCCCPCPCcCCg.",".yCCCCPPPPPcCCg.",".yCCCCCCCCCcCCy.",".y.cccccccccc..y","....BBBB.BBB...."],"left":["........Y.......",".....hhhhhh.....","...hhhhhhhhhh...","..hhhhhhhhhhXh..","..hhhhSSSShhhh..","..ghSeeSSeeehh..","..ghSeESSeEShy..","..gySSSSMSSShy..","...yhSSSSSShyg..","...yySCCCCCSyg..",".yCCCCCCCCCcCCg.",".yCCCCCPCPCcCCg.",".yCCCCPPPPPcCCg.",".yCCCCCCCCCcCCy.",".y.cccccccccc..y","....BBBB.BBB...."],"right":["........Y.......",".....hhhhhh.....","...hhhhhhhhhh...","..hhhhhhhhhhXh..","..hhhhSSSShhhh..","..ghSeeSSeeehh..","..ghSeESSeEShy..","..gySSSSMSSShy..","...yhSSSSSShyg..","...yySCCCCCSyg..",".yCCCCCCCCCcCCg.",".yCCCCCPCPCcCCg.",".yCCCCPPPPPcCCg.",".yCCCCCCCCCcCCy.",".y.cccccccccc..y","....BBBB.BBB...."]}};
 SPR.kurogama={"pal":{"h":"#16161e","H":"#34344c","d":"#08080c","S":"#efdcd8","s":"#c8a8aa","E":"#f0b82a","e":"#6a4a10","g":"#ffffff","C":"#1a1a24","c":"#2e2e3e","k":"#44445a","W":"#e4e4ee","w":"#a8a8bc","P":"#8a4ae0","p":"#c8a0ff","u":"#5a2aa0","B":"#0c0c12","b":"#2a2a3a","L":"#8a8aa4","l":"#c8c8dc"},"scene":["................................","................................","................................","..........hhhhhhhhhhhh..........","........hhhhhHHhhHHhhhhh........",".......hhhhhhhhhhhhhhhhhh.......","......hhhhhhHhhhhhhHhhhhhh......","......hhhhhhhhhhhhhhhhhhhh......",".....hhhhhhhhhhhhhhhhhhhhhh.....",".....hhhHhhhhhhhhhhhhhhHhhh.....",".....hhhhhhhhdhhhhdhhhhhhhh.....","....hhhhhhhdhhhhhhhhdhhhhhhh....","....hhhhhhhhhdhhhhdhhhhhhhhh....","....hhhhhhdhhhhhhhhhhdhhhhhh....","....hhhhhSSdhhhhhhhhdSShhhhh....","....hhhhSSSSSdhhhhdSSSSShhhh....","....hhhSSeeeeeSSSSeeeeeSShhh....","....hhhSSeEEEESSSSEEEEeSShhh....","....hhhSSEEgEESSSSEEgEESShhh....","....hhhSSSsssSSSSSSsssSSShhh....","....hhhhSSSSSSSssSSSSSSShhhh....","....hhhhSSSSSSSSSSSSSSSShhhh....",".....hhhSSSSSSssssSSSSSShhh.....",".....hhhhSSSSSSSSSSSSSShhhh.....","......hhhhSSSSSSSSSSSShhhh.L....",".......hhhsSSSSSSSSSSshhh.l.....","....CCCCCCCCCCBBBBCCCCCCCCLC....","...CCCCCCCCCCCBPPBCCCCCCClCCC...","..CCCCCCCCCCCWBPPBWCCCCCCLCCCC..","..CCCcCCCCCCWWBPPBWWCpPulCcCCC..","..CLCcCCCCCCWWWBBWWWCPuCCCcCCC..","..CClcCCCCCCCWWWWWWCCCCLCCcCCC..","..CCCLCCCCCCCCWWWWCCCCClCCcCCC..","..CCClCCCCCCCCCWWCCCCCLCCCcCCC..","..CCCcLCCuuuuukkkluuuluCCCcCCC..","..CCCcClCCuuCCCWWCLCLuCCCCcCCC..","..CCCcCCCCCuCCWWWWCluCCCCCcCCC..","..CCCcCCCCCCCCWWWWCCCCCCCCcCCC..","..SSCcCCCCCCCCWWWWCCCCCCCCcCSS..","..SSCcCCCCCCCCWWWWCCCCCCCCcCSS..",".CCCCCcCCCCCCCWWWWCCCCCCCcCCCCC.",".CCCCCcCCCCCCCWWWWCCCCCCCcCCCCC.","CCCCCCcCCCCCCCuWWuCCCCCCCcCCCCCC","CCCCCCcCCCCCCCuWWuCCCCCCCcCCCCCC","CCCCCCcCCCCCCCuWWuCCCCCCCcCCCCCC","CCCCCCcCCCCCCCWWWWCCCCCCCcCCCCCC",".CCCBBBBBBBBBBBWWBBBBBBBBBBBCCC.",".bbbbbbbbbbbbbb..bbbbbbbbbbbbbb."],"map":{"down":["................","....hhhHhHhh....","...hhhhhhhhhh...","...hhhhhhdhhhh..","..hhhdhhhhhhhh..","..hhSeeSSeeeSh..","..hhSssSSSsSSh..","...hSSSssSSShh..","....hsSSSSShhl..",".CCCCCCBPWCCCCC.",".ClCCCCWWWCCCcC.",".CCLCuukkuuuCcC.",".CCCCCCWWCCCCcC.",".CCcCCCWWCCCCCCC","CCCcCCCuWCCCCCCC",".CBBBBBBWBBBBBCC"],"up":["................","....hhhHhHhh....","...hhhhhhhhhh...","...hhhhhhdhhhh..","..hhhdhhhhhhhh..","..hhSeeSSeeeSh..","..hhSssSSSsSSh..","...hSSSssSSShh..","....hsSSSSShhl..",".CCCCCCBPWCCCCC.",".ClCCCCWWWCCCcC.",".CCLCuukkuuuCcC.",".CCCCCCWWCCCCcC.",".CCcCCCWWCCCCCCC","CCCcCCCuWCCCCCCC",".CBBBBBBWBBBBBCC"],"left":["................","....hhhHhHhh....","...hhhhhhhhhh...","...hhhhhhdhhhh..","..hhhdhhhhhhhh..","..hhSeeSSeeeSh..","..hhSssSSSsSSh..","...hSSSssSSShh..","....hsSSSSShhl..",".CCCCCCBPWCCCCC.",".ClCCCCWWWCCCcC.",".CCLCuukkuuuCcC.",".CCCCCCWWCCCCcC.",".CCcCCCWWCCCCCCC","CCCcCCCuWCCCCCCC",".CBBBBBBWBBBBBCC"],"right":["................","....hhhHhHhh....","...hhhhhhhhhh...","...hhhhhhdhhhh..","..hhhdhhhhhhhh..","..hhSeeSSeeeSh..","..hhSssSSSsSSh..","...hSSSssSSShh..","....hsSSSSShhl..",".CCCCCCBPWCCCCC.",".ClCCCCWWWCCCcC.",".CCLCuukkuuuCcC.",".CCCCCCWWCCCCcC.",".CCcCCCWWCCCCCCC","CCCcCCCuWCCCCCCC",".CBBBBBBWBBBBBCC"]}};
+/* マラ（2代目水神）：マグの女体化・参考絵ベース */
+SPR.mara={"pal": {"K": "#14141e", "H": "#34344a", "S": "#f9e6de", "s": "#e2b4ae", "E": "#e8283e", "e": "#3a0a14", "g": "#ffffff", "r": "#c41c34", "R": "#e8304a", "C": "#22202c", "c": "#3a3848", "D": "#2c2a38", "B": "#14141c", "W": "#7c8094", "w": "#e4e8f2", "G": "#ff3a54", "Y": "#e8b8a0", "m": "#e08088", "q": "#ffd0d8"}, "scene": ["................................", "............KKKKKKKK............", "..........KKKKKKKKKKKK..........", "........KKKKKKKKKKKKKKKK........", ".......KKKKKKKKKKHHHKKKKK.......", "......KKKKKHHKKKKKKKKKKKKK......", "......KKKKHHKKKKKKKKKKKKKKK.....", ".....KKKKKKKKKKKKKKKKKwwwKK.....", ".....KKKKKKKKKKKKKKKKKKKKKKK....", ".....KKKKKKKSKKKKKSKKKwwwKKK....", ".....KKKKKKSSSKKKSSSKKSKKKKK....", ".....KKKKSKeeeSSSSeeeKSKKKKK....", ".....KKKKSSEeESSSSEeESSKKKKK....", ".....KKKKSSEEgSSSSEEgSSKKKKK....", ".....KKKKSSssSSSSSSssSSKKKKK....", ".....KKKK.SSSSSSSSSSSS.KKKKK....", ".....KKKK.SSSSSmmSSSSS.KKKKK....", ".....RKKK..SSSSSSSSSS..KKKRR....", ".....RRKRKKKSSSSSSSSKKKRKRRR....", "......RRRKKKKKSSSSKKKKKRRRR.....", "......rRKKKCCRSSSSRCCKKKRr......", ".........KKRRRSSSSRRRKK.........", "........CCCCRRRDDRRRCCCC........", ".......CCWCCCCRDDDDRCCCCWCC.....", "......CCCcWCCCDDDDDDCCCWcCCC....", "......CCCCcWCCDDWDDDCCWcCCCC....", ".....CCCCCCcWDDDWWDDDWcCCCCCC...", ".....CCcCCCCWDDDGGDDDWCCCCcCC...", ".....CCcCCCCWDDGqGGDDWCCCCcCC...", ".....CCcCCCCWDDGGGGDDWCCCCcCC...", "....CCCcCCCCWDDDGGDDDWCCCCcCCC..", "....CCCcCCCCWDDDDGDDDWCCCCcCCC..", "....CCrcCCCCWDDDDDDDDWCCCCcrCC..", "....CrrcCCCcWDDDDDDDDWcCCCcrrC..", "....CrrcCCccWBBBBBBBBWccCCcrrC..", "....CrrcCCccWBDDDDDDBWccCCcrrC..", "....CrrrCCCCWBBBBBBBBWCCCCrrrC..", "....CrrrCCCCWDDDDDDDDWCCCCrrrC..", "...CCrrrCCCCWDDDDDDDDWCCCCrrrCC.", "...CrrrrCCCCWDDDDDDDDWCCCCrrrrC.", "...CrrrrCCCWDDDDDDDDDDWCCCrrrrC.", "...CrrrrCCCWDDDDDDDDDDWCCCrrrrC.", "...CrrrrCCCWDDDDDDDDDDWCCCrrrrC.", "...CCrrrCCWDDDDDDDDDDDDWCCrrrCC.", "....CCCCCCWDDDDDDDDDDDDWCCCCCC..", "..........WWWW.SS..SS.WWWW......", "...............BB..BB...........", "................................"], "map": {"down": ["................", ".....KKKKKK.....", "....KKKKKKKWW...", "...KKKKKKKKKK...", "...KKSKKKSKKK...", "..KKKSSSSSSKKK..", "..KKKEESSEEKKK..", "..KKKSSSSSSKKK..", "..RKKKSmmSKKKR..", "..RR.CRSSRC.RR..", "...CCCRDDRCCC...", "..CCWCDGGDCWCC..", "..CCWCDGGDCWCC..", "..CrWBBBBBBWrC..", "...CWDDDDDDWC...", "....WW....WW...."], "up": ["................", ".....KKKKKK.....", "....KKKKKKKWW...", "...KKKKKKKKKK...", "...KKKKKKHKKK...", "..KKKKKKKKKKKK..", "..KKKKKKKKKKKK..", "..KKKKKKKKKKKK..", "..KKKKKKKKKKKK..", "..KKKKKKKKKKKK..", "..RKKKKKKKKKKR..", "..RRCCCccCCCRR..", "..CrCCCccCCCrC..", "..CrCCCccCCCrC..", "...CCCCccCCCC...", "....CC....CC...."], "left": ["................", "......KKKKK.....", "....KKKKKKKK....", "....KKKKKKKKK...", "...KKSSKKKKKK...", "...KSSSSSKKKK...", "...KESSSSKKKK...", "...KSSSSSKKKK...", "....SmSSKKKKR...", "....CSSKKKKR....", "....CRDKKKRR....", "....CDGDCCcC....", "....CDDDCCcC....", "....BBBBBCrC....", "....CDDDCCCC....", ".....WW..WW....."], "right": ["................", ".....KKKKK......", "....KKKKKKKK....", "...KKKKKKKKK....", "...KKKKKKSSKK...", "...KKKKSSSSSK...", "...KKKKSSSSEK...", "...KKKKSSSSSK...", "...RKKKKSSmS....", "....RKKKKSSC....", "....RRKKKDRC....", "....CcCCDGDC....", "....CcCCDDDC....", "....CrCBBBBB....", "....CCCCDDDC....", ".....WW..WW....."]}};
+/* マナ：参考絵ベースに描き直し（暗い紫のボブ・毛先は薄紫・翼のヘアピン・光輪・リボン） */
+SPR.mana={"pal": {"h": "#8a52cc", "H": "#c9a2f4", "d": "#6a38aa", "D": "#4a2280", "S": "#fbefe9", "s": "#dfb2b8", "E": "#9a5cff", "g": "#f2dcff", "e": "#2a1048", "M": "#d88a9a", "C": "#52426e", "c": "#6e5e90", "B": "#2c2048", "O": "#7c44b8", "o": "#4c2078", "Q": "#d0a8f4", "K": "#1c0c2c", "R": "#a02cd8", "r": "#5a1488", "P": "#e8b0ff", "G": "#3a7a4a", "w": "#f4e8ff", "a": "#3c2468", "A": "#6a46a8", "t": "#a864f0", "T": "#d0a0ff", "b": "#f4b8c4", "p": "#b070ff", "q": "#e0b8ff", "x": "#b8a8d8", "v": "#8a50e0", "V": "#c0a0ff", "W": "#f6eeff"}, "scene": [".......pppppppppppppppppp.......", "......p..................p......", ".......pppppppppppppppppp.......", "..........aaaaaaaaaaaa....W.....", "........aaaaaAAaaAAaaaaa.WW.....", "......aaaaaaaaaaaaaaaaaaWWw.....", ".....aaaaaaaaaaaaaaaaaaWWwa.....", "....aaaaaaaaaaaaaaaaaaxWwaaa....", "....aaaaaaaaaaaaaaaaaxxaaaaa....", "....aaaaaaaaaaaaaaaaaaaaaaaa....", "....aaaaaaaaaaaaaaaaaaaaaaaa....", "....aaaaaaaaaaaSSaaaaaaaaaaa....", "....aaaaaaaaaSSSSSSaaaaaaaaa....", "....aaaaaaeeeeSSSSeeeeaaaaaa....", "....aaaaaaEEEgSSSSgEEEaaaaaa....", "....aaaaaaEEEESSSSEEEEaaaaaa....", "....aaaaaaSbbSSSSSSbbSaaaaaa....", "....aaaaaaaSSSSSSSSSSaaaaaaa....", "....aaaaaaaSSSSMMSSSSaaaaaaa....", "....aaaaaaaaSSSSSSSSaaaaaaaa....", "....taaaaaaaasSSSSsaaaaaaaat....", "....ttaaaaaaaSSSSSSaaaaaaatt....", "....tTttaaaaaSSSSSSaaaaattTt....", "...tTTttaaaaaSSSSSSaaaaattTTt...", ".......CCCCCCBcvvccCCCCCC.......", ".......CCCCCCCVvvVCCCCCCC.......", ".......cccCCCVvccvVCCCccc.......", ".......CCCCCVccccBBVCCCCC.......", ".......CCCCCCccccBBCCCCCC.......", "......CcCCCCCcccBBBCCCCCcC......", "......CCCCCCccccBBBBCCCCCC......", "......CCCCCCcccCCBBBCCCCCC......", "......CcCCCCcccCCBBBCCCCcC......", "......CCCQQQQQQQQQQQQQQCCC......", "......CCCOOOOOOOOOOOOOOCCC......", ".....OCcCOooOOOOOOOOooOCcCO.....", ".....oCCCOOOOOOOOOOOOOOCCCo.....", ".....OCCCOOOOOOOOOOOOOOCCCO.....", ".....wCcCwQwQwQwQwQwQwQCcCQ.....", "......CCCCCCCCOOOCCCCCCCCC......", "......CCCCKKKKOOOKKKKKCCCC......", "......CcCCKKKKOOOKKKKKCCcC......", "......CCCCKKKKOOOKKKKKCCCC......", "......CCCCKKKKOOOKKKKKCCCC......", "......CcCCKKKKOOOKKKKKCCcC......", "......CCCCKKKKoooKKKKKCCCC......", "......CCCCKKKKKKKKKKKKCCCC......", "................................"], "map": {"down": ["...p............", "....aaaAaAaa.W..", "..aaaaaaaaaxwa..", "..aaaaaaaaaaaa..", "..aaaeeSSeeaaa..", "..aaaSbSSSbaaa..", "..aaaaSSSSaaaa..", "..ttaaaSSSaatT..", "....CCCVvCCCC...", "....CCCccBCCC...", "...CCCccCBCCC...", "...CCOOOOOOOC...", "...CCOOOOOOOCO..", "...CCKKOOKKCC...", "...CCKKOOKKCC...", "...CCKKKKKKCC..."], "up": ["................", ".....aaaaaa.....", "....aaaaaaaoo...", "...aaaaaaaaaa...", "...aaaaaaAaaa...", "..aaaaaaaaaaaa..", "..aaaaaaaaaaaa..", "..aaaaaaaaaaaa..", "..aaaaaaaaaaaa..", "..aaaaaaaaaaaa..", "..taaaaaaaaaat..", "..ttCCCccCCCtt..", "..CTCCCccCCCTC..", "..CTCCCccCCCTC..", "...CCCCccCCCC...", "....CC....CC...."], "left": ["................", "......aaaaa.....", "....aaaaaaaa....", "....aaaaaaaaa...", "...aaSSaaaaaa...", "...aSSSSSaaaa...", "...aESSSSaaaa...", "...aSSSSSaaaa...", "....SMSSaaaat...", "....CSSaaaat....", "....CtBaaatt....", "....CBvBCCcC....", "....CBBBCCcC....", "....BBBBBCTC....", "....CBBBCCCC....", ".....oo..oo....."], "right": ["................", ".....aaaaa......", "....aaaaaaaa....", "...aaaaaaaaa....", "...aaaaaaSSaa...", "...aaaaSSSSSa...", "...aaaaSSSSEa...", "...aaaaSSSSSa...", "...taaaaSSMS....", "....taaaaSSC....", "....ttaaaBtC....", "....CcCCBvBC....", "....CcCCBBBC....", "....CTCBBBBB....", "....CCCCBBBC....", ".....oo..oo....."]}};
 /* ===== 極限・専用武器クエスト：アルファルド／クラリス／ネット／ゾルガナ／ゾルリナ／リシア／げらりん／マナ／マリア =====
    終焉キャラ以外の 仲間にも 専用武器（推奨9999・5連戦）。ドロップは 持ち主が パーティに いる時、1人ごとに 5% */
 Object.assign(UNIW,{
@@ -10967,7 +10978,7 @@ async function mukanTimeUp(f){
   await say('無冠ノ役者「冠を 渡すには、まだ 早い。\n　——けれど、認めよう。君たちは もう、伝説の 一部だ」',2800);
   await say('称号【伝説に認められしモノ】を 手に入れた。\n（この戦いは 敗北扱いとなる）',2600);}
 FOES.qmukan={...UB,n:'無冠ノ役者',k:'knight',spr:'mukan',col:'#8a4ae0',mukan:true,immortal:true,learn:true,noItem:true,regen:.08,pctDmg:.12,
-  ai:mukanAI,enrageFn:mukanTimeUp,deathMsg:'無冠ノ役者「……見事だ。この冠は、君たちのものだ」'};
+  ai:mukanAI,enrageFn:mukanTimeUp,openFx:()=>LG.open(),deathMsg:'無冠ノ役者「……見事だ。この冠は、君たちのものだ」'};
 
 ROUND_START.push(async b=>{
   const f=b.foes.find(x=>x.mukan&&!x.dead);if(!f)return;
@@ -10975,7 +10986,6 @@ ROUND_START.push(async b=>{
     f.learn=!sealed('learn');if(sealed('regen'))f.regen=0;
     if(sealed('weak')){f.mhp=Math.max(1,Math.round(f.mhp/2));f.hp=Math.min(f.hp,f.mhp);f.atk=Math.round(f.atk/2);f.def=Math.round(f.def/2);f.agi=Math.round(f.agi/2);f.pctDmg=(f.pctDmg||0)/2;}
     f.agi0=f.agi;updateParty();
-    await LG.open();
     await say('無冠ノ役者「……ようこそ。観客が いるのは、久しぶりだ」',2200);
     await say('無冠ノ役者「冠など 要らない。名も、称号も、とうに 置いてきた」\n「この身に 残ったのは——舞台と、物語だけだ」',3000);
     await say('無冠ノ役者「最初の 物語を 歩いた者として、\n　最後の 幕を 演じよう。……さあ、開演だ」',2800);
@@ -11152,7 +11162,7 @@ ROUND_END.push(async b=>{for(const f of b.foes){if(f.id!=='sSezel'||f.dead)conti
  Q('sl7','cure','【封・漆】終焉まみゃ','復讐に 堕ちた 龍人。\n（クリアで 封印【状態異常回復】を 解放）',
    '血の 匂いの 中に、龍人が 立っていた。\n終焉まみゃ「……全部 殺した。次は、お前らだ」',[['qifmamyaB',{hp:4.2,atk:1.35,x:{capPct:.003}}]]);
  Q('sl8','weak','【封・捌】マナ＆マリア','紫薔薇の 邪神と、神呪の 継承者。地獄の 庭園。\n（クリアで 封印【無冠ノ役者の 全ステータス半減】を 解放）',
-   '紫薔薇と 神呪が 絡み合う。\nマナ「無冠ノ役者に 挑むつもり？ なら、まず 私たちを 越えなさい」\nマリア「……手加減は しない」\n【制限】時間切れ 28ターン／1撃の上限 最大HPの0.25%',
+   '紫薔薇と 神呪が 絡み合う。\nマナ「無冠ノ役者に 挑むの？ なら まず、ボクたちを 越えてね！」\nマリア「……手加減は しない」\n【制限】時間切れ 28ターン／1撃の上限 最大HPの0.25%',
    [['qmanaB',{hp:3.0,atk:1.4,x:{capPct:.0025,enrage:28,pctDmg:.3,markEvery:3,markN:2,budTh:[.75,.5,.25],budHP:[6,8,10],rage:1.15}}],
     ['qmariaB',{hp:3.0,atk:1.4,x:{capPct:.0025,pctDmg:.28,curseStep:12,rageK:1.4,shinjuT:3,shinjuHits:2,counterEvery:4,pos:{x:118,y:96}}}]]);}
 TITLES.push(['seal8','封印を 解きし者','極限・封を すべて クリア',()=>SEALS.filter(([k])=>PROF.legSeals&&PROF.legSeals[k]).length,8]);
@@ -11859,7 +11869,7 @@ function CIreg(id,who,sk,spec,dur){
   ['c_zolrinaEX','機神の咆哮','zolrina',{a:'#5a8aff',b:'#e0f0ff',bg:'#050a1c',dom:'storm',atk:'storm',n:10,fin:'crack',q:[[1900,N('zolrina'),'機神、起動'],[4300,N('zolrina'),'咆えなさい――全部 薙ぎ払って']]}],
   ['c_clariceEX','天の裁き','clarice',{a:'#fff0a0',b:'#ff3a5a',bg:'#14130a',dom:'holy',atk:'pillar',n:8,fin:'pillar',extra:X.flames,q:[[1900,N('clarice'),'天よ、紅に 応えて'],[4300,N('clarice'),'裁きを――！']]}],
   ['c_gerarinEX','瞬撃・天衝','gerarin',{a:'#7fb8ff',b:'#ffffff',bg:'#080e24',dom:'stars',atk:'barrage',n:16,fin:'nova',extra:both(X.fists,X.ko),q:[[1900,N('gerarin'),'見えるか？ この 拳が'],[4300,N('gerarin'),'瞬撃――天衝！']]}],
-  ['c_manaEX','薔薇の聖域','mana',{a:'#b45cff',b:'#f2dcff',bg:'#0c0418',dom:'abyss',atk:'pillar',n:7,fin:'nova',extra:X.roses,q:[[1900,N('mana'),'ようこそ、私の 聖域へ'],[4300,N('mana'),'……二度と 出られないけれど']]}],
+  ['c_manaEX','薔薇の聖域','mana',{a:'#b45cff',b:'#f2dcff',bg:'#0c0418',dom:'abyss',atk:'pillar',n:7,fin:'nova',extra:X.roses,q:[[1900,N('mana'),'ようこそ、ボクの 聖域へ！'],[4300,N('mana'),'……あ、出口 どこだっけ？']]}],
   ['c_mariaEX','断罪の黒閃','maria',{a:'#ff2a46',b:'#ffffff',bg:'#0a0306',dom:'blood',atk:'rush',n:6,fin:'cross',extra:X.claws,q:[[1900,N('maria'),'……罪は、消えない'],[4300,N('maria'),'だから 断つの。黒閃で']]}],
   ['c_nettoDet','デット・ファイナルブレイク','netto',{a:'#d01030',b:'#e8e0d0',bg:'#0a0006',dom:'blood',atk:'rush',n:10,fin:'crack',extra:X.eye,q:[[1900,N('netto'),'骨の 半身よ、目覚めろ'],[4300,N('netto'),'デット――ファイナルブレイク！']]}],
   ['c_nettoJ','大魔王の裁き','netto',{a:'#a040ff',b:'#ff4a6a',bg:'#0a0414',dom:'void',atk:'storm',n:10,fin:'pillar',q:[[1900,N('netto'),'大魔王の 名のもとに'],[4300,N('netto'),'裁きを 下す']]}]
@@ -11871,7 +11881,7 @@ function CIreg(id,who,sk,spec,dur){
   ['cc_magRei','紅蒼・双星断','mag','rei',{a:'#ff2a48',b:'#4aa8ff',bg:'#06040e',dom:'stars',atk:'rush',n:10,fin:'cross',extra:X.sync,q:[[1900,N('mag'),'れい'],[3100,N('rei'),'うん。……行こう'],[4400,'','紅と 蒼が 交わる']]}],
   ['cc_reiNoa','聖翼ノ光闇矢','rei','noa',{a:'#fff0a0',b:'#9a40ff',bg:'#0a0814',dom:'night',atk:'rain',proj:'feather',n:44,fin:'nova',extra:both(X.wings,X.sync),q:[[1900,N('rei'),'ノア、合わせて'],[3100,N('noa'),'光と 闇を ひとつに'],[4400,'','聖なる翼が 夜空を 覆う']]}],
   ['cc_zol','月下双牙・天魔','zolgana','zolrina',{a:'#d8d8dc',b:'#5a8aff',bg:'#050a1c',dom:'night',atk:'claw',n:10,fin:'cross',extra:both(X.moonblades,X.sync),q:[[1900,N('zolgana'),'合わせろ'],[3100,N('zolrina'),'いつも通りに'],[4400,'','月下に 双つの牙']]}],
-  ['cc_mm','紫薔薇神呪・終幕','mana','maria',{a:'#b45cff',b:'#ff2a46',bg:'#0c0418',dom:'abyss',atk:'beam',fin:'crack',extra:both(X.roses,X.sync),q:[[1900,N('mana'),'マリア、手加減は 要らないわ'],[3100,N('maria'),'……ええ。最初から そのつもり'],[4400,'','紫薔薇と 神呪が 幕を 下ろす']]}],
+  ['cc_mm','紫薔薇神呪・終幕','mana','maria',{a:'#b45cff',b:'#ff2a46',bg:'#0c0418',dom:'abyss',atk:'beam',fin:'crack',extra:both(X.roses,X.sync),q:[[1900,N('mana'),'マリア、手加減は しなくて いいよね！'],[3100,N('maria'),'……ええ。最初から そのつもり'],[4400,'','紫薔薇と 神呪が 幕を 下ろす']]}],
   ['cc_mamRei','紅氷ノ誓い','mamya','rei',{a:'#6ad0ff',b:'#ff2a5a',bg:'#04101c',dom:'snow',atk:'rain',proj:'ice',n:40,fin:'cross',extra:both(X.ice,X.sync),q:[[1900,N('mamya'),'れい。あの日の 約束'],[3100,N('rei'),'忘れてないよ'],[4400,'','紅と 氷の 誓い']]}],
  ];
  CL.forEach(([id,sk,a,b,spec])=>{if(HERO[a]&&HERO[a].sk.some(s=>s.n===sk))CIreg(id,a,sk,{...spec,pair:true});});
@@ -13692,9 +13702,59 @@ async function bakMenu(){
       mel:[[4,.5],[null,.5],[4,.5],[5,.5],[7,1],[9,.5],[8,.5],[7,1],[4,1],[2,.5],[null,.5],[2,.5],[3,.5],[4,1],[6,.5],[5,.5],[4,2],[4,.5],[null,.5],[4,.5],[5,.5],[7,1],[11,.5],[10,.5],[9,1],[7,1],[8,.5],[7,.5],[6,.5],[5,.5],[4,4]]},
     kurobgm:{key:52,mode:'min',bpm:146,prog:[0,6,5,6,0,3,4,4],seed:467,lead:'sawtooth',oct:12,lv:.11,arp:1,bass:3,drums:3,hi:9,
       mel:[[0,1.5],[0,.5],[1,1],[0,1],[-1,2],[-2,2],[0,1.5],[0,.5],[3,1],[2,1],[1,4],[4,1.5],[4,.5],[5,1],[4,1],[3,2],[2,2],[1,1],[0,1],[-1,1],[1,1],[0,4]]},
+    marabgm:{key:50,mode:'min',bpm:136,prog:[0,5,3,6,0,5,4,4],seed:503,lead:'triangle',oct:12,lv:.22,arp:2,pad:1,bass:3,drums:2,hi:10,harm:1,
+      mel:[[7,.5],[9,.5],[10,1],[9,.5],[7,.5],[5,1],[7,2],[3,.5],[5,.5],[7,1],[5,.5],[3,.5],[2,1],[0,2],[7,.5],[9,.5],[10,1],[12,1],[14,1.5],[12,.5],[10,1],[9,.5],[10,.5],[9,.5],[7,.5],[5,1],[7,3],[null,1]]},
+    shiniki:{key:46,mode:'min',bpm:96,prog:[0,1,0,6,0,1,5,4],seed:509,lead:'sine',oct:24,lv:.2,pad:1,bass:2,drums:1,hi:6,
+      mel:[[0,2],[1,2],[0,1],[-1,1],[0,4],[3,2],[1,2],[0,1],[1,1],[-2,4],[0,2],[1,2],[4,2],[3,2],[1,4],[0,4]]},
     boss:{key:52,mode:'min',bpm:168,prog:[0,5,6,4,0,3,6,4],seed:149,lead:'sawtooth',oct:12,lv:.13,arp:2,bass:3,drums:3,hi:10},
   };
   const COMPOSED={};
+
+  /* --- 失いしモノ リリス：壊れていく 専用曲（手書き・戦闘が進むほど 壊れる） --- */
+  function lostTrack(){
+    /* 構成：A(Dm) → B(Em・転調) → C(G#m・半分テンポの崩壊) → D(Fm・全力) → E(1小節ごとに 短3度ずつ 転調) → テープ停止 → 頭へ */
+    const ev=[],N=(t,d,m,w,v,o)=>ev.push(Object.assign({t,d,f:F(m),w,v},o||{}));
+    const MEL=[[[74,.5],[null,.25],[74,.25],[69,.5],[null,.5],[74,.5],[76,.5],[77,1]],[[76,.5],[74,.5],[73,.5],[74,.25],[73,.25],[69,2]],
+      [[74,.5],[null,.25],[74,.25],[69,.5],[null,.5],[74,.5],[76,.5],[77,.5],[79,.5]],[[81,.75],[82,.25],[81,.5],[79,.5],[77,.5],[76,.5],[73,.5],[74,.5]],
+      [[77,1],[76,.5],[74,.5],[70,1.5],[72,.5]],[[72,.5],[70,.5],[69,1],[65,.5],[67,.5],[69,1]],[[67,.5],[69,.5],[70,.5],[72,.5],[74,1],[73,1]],[[69,2],[81,.5],[80,.5],[79,.5],[78,.5]]];
+    const CH=[[50,53,57],[49,52,57],[50,53,57],[46,50,53],[46,50,53],[45,48,53],[43,46,50],[49,52,57]],BS=[38,33,38,34,34,41,43,33];
+    const bar=(b,mi,tr,st)=>{const t0=b*4,m8=mi%8,ch=CH[m8].map(x=>x+tr),bs=BS[m8]+tr,half=st==='half';
+      /* メロディ */
+      let x=0;for(const [m,l] of MEL[m8]){if(m!=null){const mm=m+tr+(st==='hi'?12:0);
+        if(st==='box'){N(t0+x,l*.9,mm+12,'triangle',.14);N(t0+x+.5,l*.5,mm+12,'sine',.05);N(t0+x,l*.9,mm,'sawtooth',.05);}
+        else if(half){N(t0+x,.12,mm,'square',.1);for(let k=1;k<3;k++)N(t0+x+k*.0625,.06,mm+12*k,'square',.06);}
+        else{N(t0+x,l*.92,mm,'sawtooth',.12,{vib:l>=1?1:0});N(t0+x,l*.9,mm+12,'square',.04);N(t0+x,l*.9,mm-5,'sawtooth',.035);}}
+        x+=l;}
+      /* アルペジオ（32分） */
+      const sub=half?8:st==='box'?16:32;for(let i=0;i<sub;i++){const nn=ch[[0,1,2,1,0,2,1,2][i%8]]+12+(i%16>=8?12:0);N(t0+i*4/sub,4/sub*.8,nn,'square',half?.06:.04);}
+      if(half)ch.forEach(nn=>N(t0,4,nn+12,'sawtooth',.03,{a:.05,r:.6,to:F(nn+12)*.97}));
+      /* ベース */
+      for(let i=0;i<16;i++){if(half&&i%4)continue;N(t0+i*.25,half?.9:.2,[bs,bs,bs+12,bs,bs+7,bs,bs+12,bs+10][i%8],'sawtooth',half?.14:.11);}
+      /* ドラム */
+      for(let i=0;i<16;i++){const tt=t0+i*.25;
+        if(half){if(i===0||i===10)ev.push({t:tt,k:'k'});if(i===8)ev.push({t:tt,k:'s'});if(i%2===0)ev.push({t:tt,k:'h',v:.7});continue;}
+        if(st==='box'){if(i%8===0)ev.push({t:tt,k:'k'});if(i===12)ev.push({t:tt,k:'s'});if(i%4===2)ev.push({t:tt,k:'h',v:.6});continue;}
+        if(i%2===0||(st==='dbl'))ev.push({t:tt,k:'k'});if(i===4||i===12)ev.push({t:tt,k:'s'});ev.push({t:tt,k:'h',v:i%2?.5:1});}};
+    const roll=(t0,len)=>{for(let i=0;i<len*4;i++)ev.push({t:t0+i*.25,k:'s'});ev.push({t:t0,k:'z',d:len,v:.2});};
+    const crash=t=>ev.push({t,k:'n',d:1.2,v:.25,f:3000});
+    let b=0;
+    /* A：オルゴール → 本編（Dm） */
+    for(let i=0;i<4;i++)bar(b++,i,0,'box');roll(b*4-1,1);
+    for(let i=0;i<8;i++){bar(b++,i,0,'full');if(i===0)crash(b*4-4);}
+    /* B：全音上へ 転調（Em） */
+    crash(b*4);for(let i=0;i<8;i++){bar(b++,i,2,i>=6?'dbl':'full');if(i===3)ev.push({t:b*4-.5,k:'n',d:.4,v:.2,f:6000});}
+    /* C：増4度に 飛ぶ（G#m）・半分テンポで 崩れる */
+    crash(b*4);for(let i=0;i<4;i++)bar(b++,i,6,'half');
+    for(let k=0;k<8;k++)N(b*4-2+k*.25,.2,80-k,'square',.08,{to:F(80-k)*.8});roll(b*4-2,2);
+    /* D：Fm・オクターブ上で 全力 */
+    crash(b*4);for(let i=0;i<8;i++)bar(b++,i,3,i%4===3?'dbl':'hi');
+    /* E：1小節ごとに 短3度ずつ 上がっていく（Gm→A#m→C#m→Em） */
+    [5,8,11,14].forEach((tr,i)=>{crash(b*4);bar(b++,[0,2,3,7][i],tr,'dbl');});
+    /* テープ停止 → 無音 → 頭へ */
+    const te=b*4;N(te,3,69+14,'sawtooth',.14,{to:F(45)});N(te,3,57+14,'square',.06,{to:F(33)});N(te,3,BS[0]+14,'sawtooth',.14,{to:F(20)});
+    ev.push({t:te,k:'z',d:3,v:.25});for(let i=0;i<6;i++)ev.push({t:te+i*i*.08,k:'k'});b++;
+    return {bpm:176,len:b*4,ev,vol:1,lead:'sawtooth',brk:true};}
+  COMPOSED.lostbgm=lostTrack();
   const track=n=>COMPOSED[n]||(TRACKS[n]?(COMPOSED[n]=compose(TRACKS[n])):null);
   /* --- BGM再生（先読みスケジューラ） --- */
   let cur=null,curName=null,timer=null;
@@ -13721,8 +13781,14 @@ async function bakMenu(){
       const at=c.t0+(c.loop*c.tr.len+e.t)*c.beat;
       if(at>horizon)break;
       if(at>=ac.currentTime-.02){
-        if(e.k==='k')kick(c.g,at,.5);else if(e.k==='s')snare(c.g,at,.28);else if(e.k==='h')hat(c.g,at,.07*(e.v||1));
-        else tone(c.g,e.f,at,e.d*c.beat,e.w,e.v,{vib:e.vib?6:0,a:e.a,r:e.r});}
+        const bl=c.tr.brk?Math.min(.6,(window.__BRK||0)+c.loop*.025):0,q=bl?Math.random():1;
+        if(e.k==='k'){if(!(bl&&q<bl*.12))kick(c.g,at,.5);}else if(e.k==='s')snare(c.g,at,.28);else if(e.k==='h'){if(!(bl&&q<bl*.3))hat(c.g,at,.07*(e.v||1));}
+        else if(e.k==='n')noise(c.g,at,e.d*c.beat,e.v,{type:'highpass',f:e.f||5000});
+        else if(e.k==='z'){noise(c.g,at,e.d*c.beat,e.v,{type:'bandpass',f:6000,to:120,q:2});}
+        else if(bl&&q<bl*.25){/* 音が 抜け落ちる */if(Math.random()<.5)noise(c.g,at,.05,.08,{type:'highpass',f:7000});}
+        else if(bl&&q<bl*.55){const df=e.f*Math.pow(2,(Math.random()-.5)*.12);tone(c.g,df,at,e.d*c.beat,e.w,e.v,{to:df*(Math.random()<.4?.7:1),a:e.a,r:e.r});}
+        else if(bl&&q<bl*.7&&e.d<1){for(let k=0;k<3;k++)tone(c.g,e.f,at+k*c.beat*.125,c.beat*.1,e.w,e.v*(1-k*.2));}
+        else tone(c.g,e.f,at,e.d*c.beat,e.w,e.v,{vib:e.vib?6:0,a:e.a,r:e.r,to:e.to});}
       c.idx++;
     }
   }
@@ -13734,9 +13800,11 @@ async function bakMenu(){
     q_q1:'mist',q_q2:'cave',q_q3:'fort',q_q4:'dark',q_q5:'holy',q_q6:'dark',q_q7:'dark',q_raid1:'final'};
   const mapTrack=n=>{if(!n)return 'sun';if(MAPS[n])return MAPS[n];
     if(/^q_(tn|rc|tc)\d/.test(n))return 'rebirthmap';if(/^q_K/.test(n))return 'dark';if(/^q_(leg|sl)/.test(n))return 'night';
-    if(/^q_(e\d|sz|g1|x|if)/.test(n))return 'dark';if(/^q_(w|r)\d/.test(n))return 'fort';if(/^q_(tr|dx|tut)/.test(n))return 'quest';return 'sun';};
+    if(/^q_mr/.test(n))return 'night';if(/^q_(e\d|sz|g1|x|if)/.test(n))return 'dark';if(/^q_(w|r)\d/.test(n))return 'fort';if(/^q_(tr|dx|tut)/.test(n))return 'quest';return 'sun';};
   let lastMapTrack=null;
   const bossTrack=mq=>{const bf=(typeof B!=='undefined'&&B&&B.foes)?B.foes.find(f=>!f.dead&&f.bgm):null;if(bf)return typeof bf.bgm==='function'?bf.bgm(bf):bf.bgm;
+    if(/^q_lx2/.test(mq))return 'lostbgm';if(/^q_lx1/.test(mq))return 'kyoku';
+    if(/^q_K?nw1/.test(mq))return 'noeliabgm';if(/^q_K?nw2/.test(mq))return 'hatenabgm';if(/^q_K?nw3/.test(mq))return 'kurobgm';
     if(/^q_leg/.test(mq)){const f=B&&B.foes&&B.foes.find(x=>x.mukan);return f&&(f.honryo||f.awoken)?'legend2':'legend';}
     if(/^q_sl/.test(mq))return 'seal';if(/^q_rc1/.test(mq))return 'noeliabgm';if(/^q_rc2/.test(mq))return 'hatenabgm';if(/^q_rc3/.test(mq))return 'kurobgm';if(/^q_tc/.test(mq))return 'chal';if(/^q_K/.test(mq))return 'kyoku';if(/^q_tn/.test(mq))return 'rebirth';
     if(/^q_x(m|a1)/.test(mq))return 'rosebgm';if(/^q_x(r|a2)/.test(mq))return 'cursebgm';if(/^q_xg1/.test(mq))return 'clockbgm';if(/^q_xg2/.test(mq))return 'mirrorbgm';if(/^q_(xg3|if)/.test(mq))return 'dragonbgm';
@@ -13959,6 +14027,758 @@ function showNotice(){
     }catch(e){}
   },300);
 })();
+/* ===== 極限難易度 仲間加入クエスト【2代目水神】：マラ（初の 神域持ち） =====
+   ボス：ダメージ上限／物理無効（液体化）／2回行動／時間制限／神域
+   神域（ボス）：同じ名前の技を 3回 食らうと 発動（条件は ゲーム内では 明かさない）。
+     発動中のマラは 無敵・攻撃は 即死級・無敵貫通。神域には 神域でしか 抗えない。
+   仲間マラ：同じ名前の 敵の技を 3回 食らうと 神域が 発動（3ターン）。敵の神域と ぶつかると 相殺する。 */
+LOOKS.mara={c:'#22202c',h:'#14141e'};
+HERO.mara={n:'マラ',job:'二代目水神',race:'神',c:'#22202c',hair:'#14141e',hp:[38,7.8],mp:[34,5.6],atk:[6,1.0],def:[5,1.4],agi:[18,2.4],mag:[18,3.7],
+ sk:[
+  {n:'蒼閃',lv:1,mp:4,t:'one',k:'mag',p:1.9,el:'水'},
+  {n:'渦潮',lv:1,mp:9,t:'all',k:'mag',p:1.3,el:'水'},
+  {n:'水牢',lv:4,mp:10,t:'one',k:'mag',p:1.4,hold:true,stun:.7},
+  {n:'慈雨',lv:6,mp:14,t:'allally',k:'heal',p:1.2},
+  {n:'液化',lv:8,mp:10,t:'self',k:'buff',fn:async(m,s,c,head)=>{m.liqU=B.round+3;updateParty();
+    await say(head+'\nマラの 体が 水に 溶けていく……！\n（3ターンのあいだ 攻撃を 受け流しやすくなる）',1500);}},
+  {n:'驟雨',lv:10,mp:16,t:'rand',k:'mag',p:.9,hits:5,el:'水'},
+  {n:'深淵の圧',lv:14,mp:22,t:'one',k:'mag',p:3.4,pierce:true},
+  {n:'大海嘯',lv:17,mp:30,t:'all',k:'mag',p:3.6,el:'水'},
+  {n:'蒼淵ノ水葬',lv:20,mp:40,t:'one',k:'mag',p:9.0,pierce:true,el:'水'}]};
+PCHARS.push('mara');NEWC.push('mara');PNAME.mara='マラ';
+if(!PROF.chars.mara)PROF.chars.mara={lv:5,exp:0,eq:[null,null]};
+
+/* ---------- 演出ヘルパー ---------- */
+const MR={};
+MR.TH={};MR.T=null;
+MR.cv=()=>typeof sprCanvas==='function'?sprCanvas((MR.T||MR.TH.mara).id,'s','',32,48):null;
+MR.tintC={};
+MR.tint=col=>{const kk=(MR.T||MR.TH.mara).id+col;if(MR.tintC[kk])return MR.tintC[kk];const cv=MR.cv();if(!cv)return null;const c=document.createElement('canvas');c.width=32;c.height=48;const x=c.getContext('2d');
+  x.drawImage(cv,0,0);x.globalCompositeOperation='source-atop';x.fillStyle=col;x.fillRect(0,0,32,48);return MR.tintC[kk]=c;};
+MR.port=(x,y,sc,al,o)=>{o=o||{};const cv=o.tint?MR.tint(o.tint):MR.cv();if(!cv||al<=0)return;g.save();g.globalAlpha=Math.min(1,al);
+  if(o.glow){g.shadowColor=o.glow;g.shadowBlur=o.blur||14;}g.imageSmoothingEnabled=false;
+  g.drawImage(cv,0,0,32,46,Math.round(x-16*sc),Math.round(y-23*sc),Math.round(32*sc),Math.round(46*sc));g.restore();};
+MR.pixC={};MR.pixels=()=>{const id=(MR.T||MR.TH.mara).id;if(MR.pixC[id])return MR.pixC[id];const cv=MR.cv();if(!cv)return [];const d=cv.getContext('2d').getImageData(0,0,32,46).data,L=[];
+  for(let y=0;y<46;y++)for(let x=0;x<32;x++){const i=(y*32+x)*4;if(d[i+3]>100)L.push([x,y,`rgb(${d[i]},${d[i+1]},${d[i+2]})`]);}return MR.pixC[id]=L;};
+MR.ring=(cx,cy,r,sy,col,w,al)=>{if(al<=0||r<=0)return;g.save();g.globalAlpha=al;g.strokeStyle=col;g.lineWidth=w;g.beginPath();g.ellipse(cx,cy,r,r*sy,0,0,6.283);g.stroke();g.restore();};
+/* 魔法陣：二重円・ルーン環・六芒星・内円 */
+MR.circle=(cx,cy,r,rot,sy,al,A,Bc)=>{if(al<=0||r<2)return;A=A||'#5fd8ff';Bc=Bc||'#ff3a54';
+  g.save();g.translate(cx,cy);g.scale(1,sy);g.globalAlpha=al;g.shadowColor=A;g.shadowBlur=10;g.lineWidth=2;g.strokeStyle=A;
+  g.beginPath();g.arc(0,0,r,0,6.283);g.stroke();g.lineWidth=1;g.beginPath();g.arc(0,0,r*.9,0,6.283);g.stroke();
+  g.save();g.rotate(rot);g.font=`bold ${Math.max(6,r*.11)|0}px serif`;g.textAlign='center';g.textBaseline='middle';g.fillStyle=A;
+  const RU='水神域淵潮蒼滴澪渦雫';for(let i=0;i<20;i++){g.save();g.rotate(i/20*6.283);g.fillText(RU[i%RU.length],0,-r*.95+r*.0);g.restore();}g.restore();
+  g.save();g.rotate(-rot*1.6);g.strokeStyle=Bc;g.shadowColor=Bc;g.lineWidth=1.5;
+  for(let t=0;t<2;t++){g.beginPath();for(let i=0;i<=3;i++){const a=t*Math.PI/3+i*2.094-1.5708;const px=Math.cos(a)*r*.78,py=Math.sin(a)*r*.78;i?g.lineTo(px,py):g.moveTo(px,py);}g.stroke();}
+  g.beginPath();g.arc(0,0,r*.42,0,6.283);g.stroke();g.restore();
+  g.save();g.rotate(rot*2.4);g.strokeStyle=A;for(let i=0;i<12;i++){g.save();g.rotate(i*.5236);g.beginPath();g.moveTo(r*.45,0);g.lineTo(r*.62,0);g.stroke();g.restore();}g.restore();
+  g.fillStyle=A;g.globalAlpha=al*.12;g.beginPath();g.arc(0,0,r,0,6.283);g.fill();g.restore();};
+/* 神域の水底：深い海・光の柱・泡・紅の帯 */
+MR.sea=(ms,al,o)=>{if(al<=0)return;o=o||{};g.save();g.globalAlpha=al;
+  const gr=g.createLinearGradient(0,0,0,176);gr.addColorStop(0,'#0e5a7a');gr.addColorStop(.35,'#04283e');gr.addColorStop(1,'#000610');g.fillStyle=gr;g.fillRect(0,0,240,176);
+  /* 水面の向こうの 白い月 */
+  const mg=g.createRadialGradient(120,-6,4,120,-6,90);mg.addColorStop(0,'rgba(240,250,255,.9)');mg.addColorStop(.3,'rgba(160,220,255,.35)');mg.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=mg;g.fillRect(0,0,240,110);
+  /* 光の柱 */
+  g.globalCompositeOperation='lighter';
+  for(let i=0;i<6;i++){const x=20+i*40+Math.sin(ms/1300+i)*14,w=8+LG.r(i+3)*14;g.globalAlpha=al*(.07+.05*Math.sin(ms/700+i*2));g.fillStyle='#bff0ff';
+    g.beginPath();g.moveTo(x-w*.3,0);g.lineTo(x+w*.3,0);g.lineTo(x+w*1.6+18,176);g.lineTo(x-w*1.2+18,176);g.closePath();g.fill();}
+  /* 水面のゆらぎ（コースティクス） */
+  g.strokeStyle='#9fe8ff';g.lineWidth=1;for(let k=0;k<5;k++){g.globalAlpha=al*.18;g.beginPath();for(let x=0;x<=240;x+=6){const y=6+k*7+Math.sin(x/17+ms/420+k)*2.5;x?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();}
+  g.globalCompositeOperation='source-over';
+  /* 泡 */
+  for(let i=0;i<40;i++){const x=(LG.r(i+7)*240+Math.sin(ms/500+i)*5),sp=.02+LG.r(i+11)*.04,y=176-((ms*sp+LG.r(i+19)*200)%200);const r=.6+LG.r(i+23)*2;
+    g.globalAlpha=al*(.25+.4*LG.r(i+29));g.strokeStyle='#cff4ff';g.lineWidth=.8;g.beginPath();g.arc(x,y,r,0,6.283);g.stroke();}
+  /* 紅の帯（参考絵の 赤い焔） */
+  if(o.ribbon!==false)for(let k=0;k<4;k++){const a0=ms/1500*(k%2?-1:1)+k*1.6,cx=o.cx||120,cy=o.cy||84,R0=58+k*12;g.globalAlpha=al*(.5-k*.08);g.strokeStyle=k%2?'#ff6a80':'#ff2a46';g.lineWidth=3-k*.5;g.lineCap='round';
+    g.beginPath();for(let t=0;t<=1;t+=.05){const a=a0+t*2.4,rr=R0*(1-.25*t);const x=cx+Math.cos(a)*rr,y=cy+Math.sin(a)*rr*.62;t?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();}
+  /* 底の 魔法陣 */
+  if(o.floor!==false)MR.circle(o.cx||120,150,74,ms/2400,.26,al*.55);
+  g.restore();};
+/* 紫薔薇ノ園：夜の薔薇園・大きな月・茨と花弁 */
+MR.garden=(ms,al,o)=>{if(al<=0)return;o=o||{};g.save();g.globalAlpha=al;
+  const gr=g.createLinearGradient(0,0,0,176);gr.addColorStop(0,'#2a0a48');gr.addColorStop(.5,'#3a0c52');gr.addColorStop(1,'#08000e');g.fillStyle=gr;g.fillRect(0,0,240,176);
+  const mg=g.createRadialGradient(120,34,6,120,34,96);mg.addColorStop(0,'rgba(255,230,255,.95)');mg.addColorStop(.25,'rgba(210,140,255,.45)');mg.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=mg;g.fillRect(0,0,240,130);
+  g.fillStyle='#f6e8ff';g.beginPath();g.arc(120,34,19,0,6.283);g.fill();
+  g.globalCompositeOperation='lighter';
+  for(let i=0;i<5;i++){const x=24+i*48+Math.sin(ms/1500+i)*10;g.globalAlpha=al*(.06+.04*Math.sin(ms/800+i));g.fillStyle='#e0a0ff';g.beginPath();g.moveTo(x-3,0);g.lineTo(x+3,0);g.lineTo(x+30,176);g.lineTo(x-24,176);g.closePath();g.fill();}
+  g.globalCompositeOperation='source-over';
+  /* 茨 */
+  for(const sd of [0,1]){g.strokeStyle='#14061e';g.lineWidth=3;g.globalAlpha=al*.95;g.beginPath();for(let y=176;y>=0;y-=4){const x=(sd?240-14:14)+Math.sin(y/11+sd*2)*(8+y/26)*(sd?-1:1);y===176?g.moveTo(x,y):g.lineTo(x,y);}g.stroke();
+    for(let y=170;y>10;y-=18){const x=(sd?240-14:14)+Math.sin(y/11+sd*2)*(8+y/26)*(sd?-1:1);g.beginPath();g.moveTo(x,y);g.lineTo(x+(sd?-7:7),y-5);g.lineTo(x,y-9);g.stroke();
+      g.fillStyle=y%36?'#8a2ad0':'#d050ff';g.beginPath();g.arc(x+(sd?-3:3),y-3,3.2,0,6.283);g.fill();}}
+  /* 花弁 */
+  for(let i=0;i<46;i++){const x=(LG.r(i+7)*260+ms/30*(.4+LG.r(i+9)))%260-10,y=(LG.r(i+13)*200+ms/18*(.5+LG.r(i+15)))%200-12,rot=ms/400+i;
+    g.save();g.globalAlpha=al*(.4+.5*LG.r(i+21));g.translate(x,y);g.rotate(rot);g.fillStyle=i%3?'#b050f0':'#ff7ad8';g.beginPath();g.ellipse(0,0,3.4,1.7,0,0,6.283);g.fill();g.restore();}
+  if(o.floor!==false)MR.circle(o.cx||120,150,74,ms/2400,.26,al*.55,'#d070ff','#ff5ad8');
+  g.restore();};
+MR.TH.mara={id:'mara',A:'#5fd8ff',B:'#ff3a54',bg:(ms,al,o)=>MR.sea(ms,al,o),name:'蒼淵ノ水底',kill:'神域・蒼淵葬送',killTxt:'水底の 圧が すべてを 押し潰した。',who:'マラ',qB:'マラ「ここでは、わたしが 法だよ」',qA:'マラ「……わたしの 番だね」',lose:'マラ「神域の 中では、神が 絶対。\n　……満たしたのは、あなたたちだよ」'};
+MR.TH.mana={fill:['#ffd8ff','#9a30e0','#10001a'],id:'mana',A:'#d070ff',B:'#ff5ad8',bg:(ms,al,o)=>MR.garden(ms,al,o),name:'紫薔薇ノ園',kill:'神域・紫薔薇葬送',killTxt:'満開の 紫薔薇が すべてを 呑みこんだ。',who:'マナ',qB:'マナ「ここは ボクの 庭だよ！」',qA:'マナ「ボクの 庭も 見せてあげる！」',lose:'マナ「あっ……やりすぎちゃった？\n　えへへ、薔薇が 咲いちゃったね」'};
+MR.T=MR.TH.mara;
+MR.splash=(cx,cy,u,n,col,al,seed)=>{if(al<=0)return;for(let i=0;i<n;i++){const a=LG.r(i+(seed||0))*6.283,sp=40+LG.r(i+50+(seed||0))*90,x=cx+Math.cos(a)*sp*u,y=cy+Math.sin(a)*sp*u*.8+60*u*u;
+  g.save();g.globalAlpha=al*(1-u);g.fillStyle=i%3?(col||'#8fe8ff'):'#ffffff';g.fillRect(x,y,i%4?2:3,i%4?2:3);g.restore();}};
+MR.title=(main,sub,al,y)=>{if(al<=0)return;y=y||118;LG.band(y,30,al*.9,'#5fd8ff');LG.t(main,120,y-3,17,'#e8fbff',al,'#002030',4);if(sub)LG.t(sub,120,y+10,8,'#ff8a9a',al,'#000',1);};
+MR.q=(t,al)=>{if(al<=0)return;g.save();g.globalAlpha=al*.85;g.fillStyle='#000a12';g.fillRect(12,144,216,24);g.strokeStyle='#5fd8ff';g.lineWidth=1;g.strokeRect(12.5,144.5,215,23);g.restore();LG.t(t,120,156,10,'#e8fbff',al,'#000',1);};
+
+/* --- 登場（クエスト開始）：一滴 → 波紋 → 水柱 → 顕現 → 瞳 → 名乗り --- */
+MR.open=()=>{MR.T=MR.TH.mara;return LG.play(12400,(ms,st)=>{
+  LG.dark(1,'#000306');
+  const dropY=Math.min(1,ms/1100);
+  if(ms<1150){g.save();g.fillStyle='#bff0ff';g.shadowColor='#5fd8ff';g.shadowBlur=8;g.beginPath();g.ellipse(120,-6+dropY*106,2,3.4,0,0,6.283);g.fill();g.restore();
+    LG.t('……',120,40,10,'#7fb8d0',LG.s(ms,200,600)*(1-LG.s(ms,900,1100)),'#000',1);}
+  LG.at(st,'d',ms,1100,()=>{LG.snd('chime');});
+  if(ms>1100&&ms<6600){const u=(ms-1100);
+    g.save();const sg=g.createLinearGradient(0,100,0,176);sg.addColorStop(0,'rgba(20,90,120,.55)');sg.addColorStop(1,'rgba(0,10,20,0)');g.globalAlpha=LG.s(ms,1100,2200)*(1-LG.s(ms,6200,6600));g.fillStyle=sg;g.fillRect(0,100,240,76);g.restore();
+    for(let k=0;k<6;k++){const t=(u-k*420)/2400;if(t<=0||t>=1)continue;MR.ring(120,100,8+t*120,.22,k%2?'#ff6a80':'#9fe8ff',1.5,(1-t)*.9);}
+    LG.t('――水は、すべてを 映す。',120,40,11,'#dff6ff',LG.s(ms,1800,2300)*(1-LG.s(ms,3600,4000)),'#000',1);}
+  /* 水柱 */
+  if(ms>3200&&ms<6400){const u=LG.e(LG.s(ms,3200,4800)),h=u*120,al=1-LG.s(ms,6100,6400);
+    g.save();g.globalAlpha=al*.8;const cg=g.createLinearGradient(96,0,144,0);cg.addColorStop(0,'rgba(30,140,190,.1)');cg.addColorStop(.5,'rgba(160,230,255,.85)');cg.addColorStop(1,'rgba(30,140,190,.1)');
+    g.fillStyle=cg;g.beginPath();g.moveTo(92,100);g.quadraticCurveTo(104,100-h*.5,100+Math.sin(ms/120)*3,100-h);g.lineTo(140+Math.sin(ms/130)*3,100-h);g.quadraticCurveTo(136,100-h*.5,148,100);g.closePath();g.fill();
+    g.strokeStyle='#e8fbff';g.lineWidth=1;for(let k=0;k<5;k++){g.beginPath();for(let t=0;t<=1;t+=.05){const y=100-h*t,x=120+Math.sin(t*9+ms/160+k*1.3)*(14-t*4);t?g.lineTo(x,y):g.moveTo(x,y);}g.globalAlpha=al*.5;g.stroke();}g.restore();
+    MR.port(120,62,1.5,LG.s(ms,4200,5600)*al*.9,{tint:'#9fe8ff',glow:'#5fd8ff'});LG.at(st,'c',ms,3300,()=>LG.snd('magic'));}
+  /* 顕現 */
+  LG.at(st,'b',ms,6200,()=>{LG.snd('shatter');LG.snd('boom');shakeScreen();});
+  if(ms>=6200&&ms<8800){const u=LG.s(ms,6200,7600),al=1-LG.s(ms,8500,8800);
+    MR.sea(ms,al*.9,{floor:false});
+    if(ms<6500){g.save();g.globalAlpha=1-(ms-6200)/300;g.fillStyle='#e8fbff';g.fillRect(0,0,240,176);g.restore();}
+    MR.splash(120,70,u,70,'#8fe8ff',al,3);
+    const sc=2.1+.25*(1-LG.e(LG.s(ms,6200,7000)));MR.port(120,84+Math.sin(ms/400)*2,sc,al,{glow:'#ff2a46',blur:12});
+    MR.port(120,84+Math.sin(ms/400)*2,sc,al*(1-LG.s(ms,6200,7200)),{tint:'#e8fbff'});}
+  /* 瞳のクローズアップ */
+  if(ms>=8600&&ms<10200){const al=LG.s(ms,8600,8800)*(1-LG.s(ms,9900,10200));LG.dark(al,'#000306');
+    const cv=MR.cv();if(cv){g.save();g.globalAlpha=al;g.imageSmoothingEnabled=false;const z=1+.06*LG.s(ms,8600,10200);g.translate(120,88);g.scale(z,z);
+      g.drawImage(cv,8,10,16,6,-96,-36,192,72);g.restore();
+      g.save();g.globalAlpha=al;g.fillStyle='#000';g.fillRect(0,40,240,12);g.fillRect(0,124,240,12);g.restore();
+      const fl=.6+.4*Math.sin(ms/50);for(const ex of [-36,36]){g.save();g.globalCompositeOperation='lighter';g.globalAlpha=al*fl*.6;const gr=g.createRadialGradient(120+ex,92,0,120+ex,92,26);gr.addColorStop(0,'#ffffff');gr.addColorStop(.3,'#ff3a54');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(80+ex,52,80,80);g.restore();}}
+    LG.at(st,'e',ms,8700,()=>LG.snd('tick'));}
+  /* 名乗り */
+  if(ms>=10000){const al=LG.s(ms,10000,10300)*(1-LG.s(ms,12000,12400));MR.sea(ms,al,{floor:true});MR.port(120,70+Math.sin(ms/400)*2,1.7,al,{glow:'#ff2a46'});
+    MR.title('二代目水神　マ　ラ','―― 神域の主 ――',al*LG.s(ms,10200,10600),124);
+    LG.stamp('神',204,40,22,al*LG.s(ms,10500,10700),.2,'#ff3a54');LG.at(st,'s',ms,10500,()=>LG.snd('boom'));
+    MR.q('「……ようこそ。わたしの 水底へ」',al*LG.s(ms,10800,11200));}
+});};
+/* --- 神域展開 --- */
+MR.domain=(ally)=>LG.play(10600,(ms,st)=>{
+  const cx=120,cy=80;
+  LG.dark(Math.min(1,ms/200),'#00060c');
+  if(ms<420){g.save();g.globalAlpha=1-ms/420;g.fillStyle=ms<140?'#ffffff':'#ff2a46';g.fillRect(0,0,240,176);g.restore();}
+  LG.at(st,'a',ms,0,()=>{LG.snd('shatter');shakeScreen();});
+  LG.t('――満ちた。',120,40,13,'#e8fbff',LG.s(ms,300,600)*(1-LG.s(ms,1500,1800)),'#000',2);
+  /* 魔法陣の展開 */
+  if(ms>600&&ms<5600){const u=LG.e(LG.s(ms,600,2600)),al=1-LG.s(ms,5200,5600),sy=1-.7*LG.e(LG.s(ms,3000,4200)),y=cy+60*LG.e(LG.s(ms,3000,4200));
+    g.save();g.globalCompositeOperation='lighter';const pg=g.createLinearGradient(cx-30,0,cx+30,0);pg.addColorStop(0,'rgba(95,216,255,0)');pg.addColorStop(.5,'rgba(200,245,255,.55)');pg.addColorStop(1,'rgba(95,216,255,0)');
+    g.globalAlpha=al*LG.s(ms,1200,2000)*(1-LG.s(ms,3000,3800));g.fillStyle=pg;g.fillRect(cx-30,0,60,176);g.restore();
+    MR.circle(cx,y,u*76,ms/700,sy,al,MR.T.A,MR.T.B);MR.circle(cx,y,u*44,-ms/500,sy,al*.8,MR.T.B,MR.T.A);
+    MR.port(cx,cy-4-10*LG.s(ms,3000,4200),1.6,al*LG.s(ms,800,1400),{glow:ally?MR.T.A:MR.T.B});
+    LG.at(st,'b',ms,700,()=>LG.snd('magic'));LG.at(st,'c',ms,1600,()=>LG.snd('chime'));LG.at(st,'d',ms,2400,()=>LG.snd('chime'));}
+  /* 空間が 割れて 世界が 変わる */
+  if(ms>3600){const u=LG.s(ms,3600,5200),R0=LG.e(u)*300;
+    if(ms<5400){g.save();g.strokeStyle='#e8fbff';g.lineWidth=1.5;g.globalAlpha=1-LG.s(ms,4800,5400);for(let i=0;i<14;i++){const a=LG.r(i+71)*6.283,L=LG.s(ms,3600,4300)*(60+LG.r(i+72)*120);
+      g.beginPath();g.moveTo(cx,cy);let px=cx,py=cy;for(let k=1;k<=4;k++){px=cx+Math.cos(a+(LG.r(i*7+k)-.5)*.5)*L*k/4;py=cy+Math.sin(a+(LG.r(i*7+k+3)-.5)*.5)*L*k/4;g.lineTo(px,py);}g.stroke();}g.restore();}
+    LG.at(st,'e',ms,4300,()=>{LG.snd('shatter');LG.snd('boom');shakeScreen();});
+    g.save();g.beginPath();g.arc(cx,cy,Math.max(1,R0),0,6.283);g.clip();MR.T.bg(ms,1,{cx,cy});g.restore();
+    if(ms>4300&&ms<5600){for(let i=0;i<26;i++){const a=LG.r(i+91)*6.283,d=(ms-4300)/1300,r0=20+LG.r(i+92)*60;const x=cx+Math.cos(a)*(r0+d*200),y=cy+Math.sin(a)*(r0+d*160);
+      g.save();g.globalAlpha=1-d;g.translate(x,y);g.rotate(d*6+i);g.fillStyle=i%2?'#0a1a26':'#1a2a36';g.strokeStyle='#bfe8ff';g.beginPath();g.moveTo(-6,-4);g.lineTo(7,-2);g.lineTo(2,6);g.closePath();g.fill();g.stroke();g.restore();}}}
+  /* 神域の主 */
+  if(ms>5000){const al=LG.s(ms,5000,5600)*(1-LG.s(ms,10200,10600)),y=92+Math.sin(ms/420)*3;
+    MR.port(cx,y,1.8,al,{glow:ally?MR.T.A:MR.T.B,blur:16});
+    for(const ex of [-5,5]){g.save();g.globalCompositeOperation='lighter';g.globalAlpha=al*(.5+.5*Math.sin(ms/60));const px=cx+ex*1.8,py=y-23*1.8+13*1.8;const gr=g.createRadialGradient(px,py,0,px,py,9);gr.addColorStop(0,'#fff');gr.addColorStop(.4,ally?MR.T.A:MR.T.B);gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(px-10,py-10,20,20);g.restore();}
+    const sa=LG.s(ms,5600,5800);LG.stamp('神　域',120,24,18,al*sa,-.05,ally?MR.T.A:MR.T.B);LG.at(st,'f',ms,5600,()=>{LG.snd('boom');shakeScreen();});
+    if(ms>5600&&ms<5800){g.save();g.globalAlpha=1-(ms-5600)/200;g.fillStyle='#fff';g.fillRect(0,0,240,176);g.restore();}
+    MR.title('【'+MR.T.name+'】',ally?'神域展開 ―― 神には、神を':'神域展開 ―― ここでは、神が 絶対',al*LG.s(ms,6400,6800),124);
+    MR.q(ally?MR.T.qA:MR.T.qB,al*LG.s(ms,7800,8200));}
+});
+/* --- 神域の一撃（即死） --- */
+MR.drown=()=>LG.play(5200,(ms,st)=>{
+  MR.T.bg(ms,1,{});const lv=176-LG.e(LG.s(ms,600,2600))*190;
+  MR.circle(120,84,40+LG.s(ms,0,1400)*60,ms/300,1,1-LG.s(ms,2400,2800),MR.T.B,MR.T.A);
+  LG.at(st,'a',ms,200,()=>LG.snd('magic'));LG.at(st,'b',ms,900,()=>{LG.snd('boom');shakeScreen();});
+  g.save();g.globalAlpha=.85;const wg=g.createLinearGradient(0,lv,0,176);{const F=MR.T.fill||['#bff0ff','#1a7aa8','#001018'];wg.addColorStop(0,F[0]);wg.addColorStop(.06,F[1]);wg.addColorStop(1,F[2]);}g.fillStyle=wg;
+  g.beginPath();g.moveTo(0,176);for(let x=0;x<=240;x+=8)g.lineTo(x,lv+Math.sin(x/14+ms/90)*4);g.lineTo(240,176);g.closePath();g.fill();g.restore();
+  MR.title(MR.T.kill,'―― 抗う術は、ない ――',LG.s(ms,1200,1600)*(1-LG.s(ms,4200,4600)),60);
+  if(ms>3000){const u=LG.s(ms,3000,3300);LG.slash(0,40,240,140,u,1-LG.s(ms,3600,4000),'#ff2a46',10);LG.at(st,'c',ms,3000,()=>{LG.snd('slash');LG.snd('boom');shakeScreen();});}
+  if(ms>3300&&ms<3700){g.save();g.globalAlpha=1-(ms-3300)/400;g.fillStyle='#ffffff';g.fillRect(0,0,240,176);g.restore();}
+  LG.dark(LG.s(ms,4400,5200),'#000');});
+/* --- 神域の衝突（相殺） --- */
+MR.clash=(col)=>LG.play(4800,(ms,st)=>{
+  LG.dark(1,'#00060c');const u=LG.e(LG.s(ms,200,1800)),al=1-LG.s(ms,2600,3000);
+  MR.circle(20+u*84,84,52,ms/400,1,al,col||'#5fd8ff','#e8fbff');MR.circle(220-u*84,84,52,-ms/400,1,al,'#ff3a54','#ff9aa8');
+  LG.at(st,'a',ms,200,()=>LG.snd('magic'));
+  if(ms>1800&&ms<2600){for(let i=0;i<10;i++){const a=i*.628+ms/200;g.save();g.globalAlpha=.8;g.strokeStyle=i%2?'#5fd8ff':'#ff3a54';g.lineWidth=2;g.beginPath();g.moveTo(120,84);g.lineTo(120+Math.cos(a)*60*LG.r(i+ms/100|0),84+Math.sin(a)*60*LG.r(i+3));g.stroke();g.restore();}}
+  LG.at(st,'b',ms,2600,()=>{LG.snd('shatter');LG.snd('boom');shakeScreen();});
+  if(ms>2600&&ms<3000){g.save();g.globalAlpha=1-(ms-2600)/400;g.fillStyle='#fff';g.fillRect(0,0,240,176);g.restore();}
+  MR.splash(120,84,LG.s(ms,2600,4200),60,col||'#bff0ff',1,7);MR.splash(120,84,LG.s(ms,2600,4200),40,'#ff6a80',1,9);
+  LG.t('神域 相殺',120,84,22,'#ffffff',LG.s(ms,2900,3200)*(1-LG.s(ms,4400,4800)),'#000',3);});
+/* --- 敗北：水になって 崩れる --- */
+MR.fall=()=>{MR.T=MR.TH.mara;return LG.play(7600,(ms,st)=>{
+  MR.sea(ms,1-LG.s(ms,6600,7600),{floor:false,ribbon:ms<2400});const P=MR.pixels(),sc=2.2,ox=120-16*sc,oy=84-23*sc;
+  LG.at(st,'a',ms,600,()=>LG.snd('shatter'));
+  g.save();for(const [x,y,c] of P){const st0=600+(46-y)*28+LG.r(x*13+y)*300,t=Math.max(0,ms-st0)/1000;
+    const px=ox+x*sc+(t>0?Math.sin(x+y)*8*t:0),py=oy+y*sc+(t>0?60*t*t+10*t:0);if(py>190)continue;
+    g.globalAlpha=t>0?Math.max(0,1-t*.6):1;g.fillStyle=t>.15?(LG.r(x+y*3)<.5?'#8fe8ff':'#e8fbff'):c;g.fillRect(px,py,Math.ceil(sc),Math.ceil(sc));}g.restore();
+  for(let k=0;k<4;k++){const t=(ms-2600-k*500)/1800;if(t>0&&t<1)MR.ring(120,160,10+t*90,.2,'#9fe8ff',1.2,(1-t)*.8);}
+  MR.q('マラ「……ふふ。……負けちゃった」',LG.s(ms,3000,3400)*(1-LG.s(ms,6200,6600)));
+  LG.dark(LG.s(ms,6800,7600),'#000');});};
+
+/* ---------- 神域の判定 ---------- */
+const MRGOD={mara:['蒼淵ノ水底','#5fd8ff'],mana:['紫薔薇ノ園','#d070ff']};
+const mrBoss=()=>typeof B!=='undefined'&&B&&B.foes?B.foes.find(f=>f.maraB&&!f.dead):null;
+const mrDomFoe=()=>typeof B!=='undefined'&&B&&B.foes?B.foes.find(f=>f.godB&&f.shiniki&&!f.dead):null;
+const mrAllyDom=m=>!!(m&&MRGOD[m.id]&&B&&m.shinU>=B.round&&m.hp>0);
+function mrPierce(m){return mrAllyDom(m);}
+const mrAnyAlly=()=>S&&S.party?S.party.find(mrAllyDom):null;
+async function mrBossDomain(f){
+  B.mrCnt={};
+  const al=mrAnyAlly()||S.party.find(m=>MRGOD[m.id]&&m.hp>0&&!m.sealed&&!m.bound&&!B.mrCtr&&m.mp>=Math.ceil(stat(m,'mp')*.5));
+  if(al){const ac=mrAllyDom(al);if(!ac){B.mrCtr=1;al.mp=Math.max(0,al.mp-Math.ceil(stat(al,'mp')*.5));updateParty();
+      await say(`${pn(al)}は 敵の 神域の 気配に 気づいた――！\n（MPを 半分 使って 神域で 迎え撃つ）`,1800);}
+    await say(`${pn(al)}「……っ、神域を 神域で――！」`,1400);await MR.clash(MRGOD[al.id]?MRGOD[al.id][1]:null);al.shinU=0;al.invUntil=0;updateParty();
+    await say(`二つの 神域が ぶつかり合い、砕け散った！\n【神域 相殺】${f.n}の 神域は 不発に 終わった！`,2200);return;}
+  MR.T=MR.TH[f.godB||'mara'];
+  await MR.domain(false);
+  f.shiniki=true;f.held=0;f.bound=0;f.sealed=0;updateParty();
+  await say(`${f.n}の 神域が 展開された――！`,1400);
+  await say(`【神域】\n・神域の中で、発動者は 絶対\n・${f.n}に あらゆる攻撃が 届かない\n・${f.n}の攻撃は 即死級・無敵すら 貫く\n――神域には、神域でしか 抗えない。`,4200);}
+async function mrAllyDomain(m){
+  m.shinPend=false;B.mrAc={};
+  const f=mrDomFoe();
+  if(f){await say(`${pn(m)}「……神域には、神域で 返す」`,1400);await MR.clash(MRGOD[m.id]&&MRGOD[m.id][1]);f.shiniki=false;B.mrCnt={};updateParty();
+    await say(`二つの 神域が ぶつかり合い、砕け散った！\n【神域 相殺】${f.n}の 神域が 消えた！`,2200);return;}
+  MR.T=MR.TH[m.id]||MR.TH.mara;
+  await MR.domain(true);
+  m.shinU=B.round+2;m.invUntil=Math.max(m.invUntil||0,m.shinU);updateParty();
+  await say(`${pn(m)}の 神域が 展開された――！\n【神域】3ターンの間 ${pn(m)}は 無敵。\n与えるダメージ 3倍・ダメージ上限と 無効化を 無視する！`,3000);}
+/* 味方マラ：同じ名前の 敵の技を 3回 受けると 神域 */
+{const _hp=hitParty;hitParty=function(f,m,mult){
+  if(m&&m.id==='mara'&&m.hp>0&&B&&!(m.invUntil&&B.round<=m.invUntil)){const ev=(m.liqU>=B.round?.45:.18);
+    if(rr()<ev){const p=ppos(m);floatTxt(p.x,p.y-20,'液体化','#8fe8ff');(B.hits=B.hits||[]).push(m);return 0;}}
+  const d=_hp(f,m,mult);const mv=B&&B.curMv;
+  if(m&&m.id==='mara'&&mv&&B&&!mrAllyDom(m)&&B.mrAl!==mv.n+':'+B.round){B.mrAl=mv.n+':'+B.round;B.mrAc=B.mrAc||{};B.mrAc[mv.n]=(B.mrAc[mv.n]||0)+1;
+    if(B.mrAc[mv.n]>=3&&m.hp>0)m.shinPend=true;}
+  return d;};}
+{const _fa=foeAct;foeAct=async function(f){const r=await _fa.apply(this,arguments);
+  for(const m of (S.party||[]))if(m.id==='mara'&&m.shinPend&&m.hp>0&&!B.end)await mrAllyDomain(m);
+  return r;};}
+DMGMODS.push((m,s,f,r)=>{if(mrAllyDom(m))r.d=Math.round(r.d*3);});
+{const _dc=window.DMGCAP;window.DMGCAP=function(m,s,f,r){if(mrPierce(m))return;return _dc(m,s,f,r);};}
+/* 液体化（物理無効）：当たった 位置が 水になって 貫通する */
+function mrLiq(f,m,h){f.liqT=performance.now();f.liqY=-24+rr()*40;f.liqN=(f.liqN||0)+1;const p=foePos(f);
+  if(!h)floatTxt(p.x,p.y-30,f.shiniki?'無効':'液体化','#8fe8ff');if(typeof fxSnd==='function'&&!h)fxSnd('chime');}
+{const _df=drawFoe;drawFoe=function(f,x,y,t){
+  if(f.godB&&f.shiniki&&!f.dead){const T0=MR.TH[f.godB];g.save();g.globalAlpha=.32;T0.bg(t,1,{floor:false,cx:x,cy:y});g.restore();MR.circle(x,y+30,46,t/1600,.26,.6,T0.B,T0.A);}
+  _df(f,x,y,t);
+  if(!f.maraB||f.dead)return;
+  const yy=y+Math.sin(t/260+x)*2,now=performance.now(),dt=now-(f.liqT||0);
+  if(dt<760){const a=1-dt/760,cv=MR.tint('#7fe4ff');
+    if(cv){g.save();g.globalAlpha=.85*a;g.imageSmoothingEnabled=false;g.drawImage(cv,0,0,32,44,x-22,yy-32,44,60);g.restore();}
+    const hy=yy+f.liqY;g.save();g.globalAlpha=a;g.fillStyle='#03121c';g.beginPath();g.ellipse(x,hy,4+dt/60,3+dt/120,0,0,6.283);g.fill();
+    g.strokeStyle='#e8fbff';g.lineWidth=1;g.beginPath();g.ellipse(x,hy,6+dt/40,4+dt/90,0,0,6.283);g.stroke();
+    g.strokeStyle='#8fe8ff';g.beginPath();g.ellipse(x,hy,10+dt/25,6+dt/60,0,0,6.283);g.stroke();
+    for(let i=0;i<10;i++){const u=dt/760,a2=LG.r(i+(f.liqN||0)*11)*6.283,sp=14+LG.r(i+5)*26;g.fillStyle=i%3?'#8fe8ff':'#ffffff';g.fillRect(x+Math.cos(a2)*sp*u+(i<4?20*u:0),hy+Math.sin(a2)*sp*u*.6+18*u*u,2,2);}
+    g.restore();if(dt<200){g.save();g.globalAlpha=(1-dt/200)*.5;g.strokeStyle='#bff0ff';g.lineWidth=2;g.beginPath();g.moveTo(x-40,hy);g.lineTo(x+40,hy);g.stroke();g.restore();}}
+  if(f.shiniki){g.save();g.globalCompositeOperation='lighter';g.globalAlpha=.3+.2*Math.sin(t/120);const gr=g.createRadialGradient(x,yy,4,x,yy,44);gr.addColorStop(0,'#ff3a54');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-46,yy-46,92,92);g.restore();}};}
+/* 技の 回数を 数える（ボスの神域条件） */
+const mrOff=c=>c.t==='atk'?'こうげき':(c.t==='skill'&&c.s&&['one','all','rand'].includes(c.s.t)&&!['heal','buff','revive','cure','mpgive','shield'].includes(c.s.k))?c.s.n:null;
+ACT_POST.push(async(m,c)=>{
+  const f=mrBoss();if(!f||f.shiniki||B.end)return;const n=mrOff(c);if(!n)return;
+  B.mrCnt=B.mrCnt||{};B.mrCnt[n]=(B.mrCnt[n]||0)+1;
+  if(B.mrCnt[n]===2&&!B.mrHint){B.mrHint=1;await say('マラ「……その水の 揺れ方、さっきも 見たよ」',1500);}
+  if(B.mrCnt[n]>=3)await mrBossDomain(f);});
+
+/* ---------- ボス：マラ ---------- */
+async function maraKill(f){
+  MR.T=MR.TH[f.godB||'mara'];
+  await MR.drown();
+  S.party.forEach(m=>{if(m.hp>0){m.hp=0;m.buff=0;}});updateParty();shakeScreen();
+  await say(`${MR.T.kill}――\n${MR.T.killTxt}\n（無敵すら 意味を なさない）`,2600);
+  if(!alivePty().length){B.end='lose';await say(MR.T.lose,2600);}}
+async function maraAI(f){
+  for(let i=0;i<2;i++){
+    if(!alivePty().length||f.dead||f.downed||B.end)return;
+    if(f.shiniki){await maraKill(f);return;}
+    if(i===0&&f.tide===B.round){f.tide=0;await LG.move(f,'大海嘯');await exAtk(f,'大海嘯','all',1.5);continue;}
+    if(i===0&&B.round%6===5){f.tide=B.round+1;await say('マラが 両手を 広げた……\n潮が 大きく 引いていく――\n（次のターン 大技の予兆！）',1700);continue;}
+    const L=[['蒼閃','one',1.25,4],['渦潮','all',.7,3],['驟雨','multi',.45,3,{n:5}],['水牢','one',.6,2,{bind:1}],['深淵の圧','all',.55,2,{seal:1}]];
+    let tot=L.reduce((a,x)=>a+x[3],0),r=rr()*tot,p=L[0];for(const x of L){r-=x[3];if(r<=0){p=x;break;}}
+    await LG.move(f,p[0]);await exAtk(f,p[0],p[1],p[2],p[4]||{});}}
+async function maraTimeUp(f){
+  await say('マラ「……もう、時間だよ」',1600);
+  f.shiniki=true;await maraKill(f);f.shiniki=false;
+  if(!B.end&&!alivePty().length)B.end='lose';
+  await say('――時間切れ。',1400);}
+FOES.qmaraB={...UB,n:'マラ',k:'maid',spr:'mara',col:'#22202c',maraB:true,godB:'mara',liquid:true,immortal:true,noItem:false,capPct:.04,pctDmg:.17,enrage:30,
+  ai:maraAI,enrageFn:maraTimeUp,openFx:()=>MR.open(),bgm:f=>f.shiniki?'shiniki':'marabgm',deathMsg:'マラは 水に 還っていく……'};
+ROUND_START.push(async b=>{
+  const f=b.foes.find(x=>x.maraB&&!x.dead);if(!f||b.round!==1)return;
+  b.mrCnt={};b.mrHint=0;f.shiniki=false;f.tide=0;
+  await say('マラ「わたしは マラ。二代目の 水神」\n「先代から 受け継いだのは、この 水底と――神域」',3000);
+  await say('マラ「あなたたちの 力、見せて。\n　……でも、気をつけてね。水は 何でも 覚えてるから」',3000);
+  await say('【水神の掟】\n・物理攻撃は 液体化して 通らない\n・1撃の上限 最大HPの4%\n・2回行動・6ターンごとに 大技\n・時間制限 30ターン\n・神域：神が ある条件を 満たすと 発動する',4600);});
+ROUND_END.push(async b=>{
+  const f=b.foes.find(x=>x.maraB&&!x.dead);if(!f||!f.downed)return;
+  f.downed=false;f.shiniki=false;
+  await say('マラ「……あは。届いちゃった」',1600);
+  await MR.fall();
+  f.immortal=false;f.hp=0;f.dead=true;
+  await say('マラ「わたしの 神域、見せずに 勝つなんて。\n　……ねえ。わたし、あなたたちに ついていっても いい？」',3200);});
+if(typeof LG!=='undefined'&&!LG.move)LG.move=async()=>{};
+
+/* ---------- クエスト ---------- */
+exQuest({id:'mr1',name:'【2代目水神】',tier:8,lv:8000,rec:8000,alias:'fort',bg:'hell',recruit:['mara'],
+  desc:'水底に 立つ 黒髪の 少女――二代目の 水神。\n物理は 届かず、神には 神域がある。\n（ボス単体。クリアで マラが 仲間になる）',
+  waves:[{say:'足元が 水に 浸っている。\n深い 水底の 静けさの中、誰かが こちらを 見ていた――',lv:9999,boss:true,foes:[['qmaraB',{hp:2.4,atk:1.3}]]}]});
+TITLES.push(['mr1','神域を越えし者','極限【2代目水神】を クリア',()=>D_('mr1'),1]);
+
+/* ---------- 仲間マラの 必殺演出 ---------- */
+{const _d=CI.dom;CI.dom=function(type,ms,al,P){if(type!=='sea')return _d.apply(this,arguments);MR.sea(ms,al,{floor:true});};}
+CIreg('c_mara','mara','蒼淵ノ水葬',{a:'#5fd8ff',b:'#ff3a54',bg:'#000814',dom:'sea',atk:'rain',n:5,fin:'pillar',
+  q:[[1900,'マラ','……沈んで'],[4300,'マラ','水底は 静かだよ'],[6400,'マラ','蒼淵ノ――水葬']]});
+
+/* ===== マナの神域：薔薇が 5輪 咲き揃うと 発動（ボス）／ 敵の薔薇が 5輪 咲くと 発動（仲間） ===== */
+FOES.qmanaB.godB='mana';
+{const _ai=FOES.qmanaB.ai;FOES.qmanaB.ai=async f=>{if(f.shiniki){await maraKill(f);return;}return _ai(f);};}
+const mnBloomTxt=['','庭に 紫薔薇が 一輪 咲いた……','二輪目が 咲いた。紫の香りが 濃くなっていく……','三輪目が 咲いた。庭が 紫に 染まっていく……','四輪目が 咲いた。\n満開まで あと 一輪——嫌な 予感がする……'];
+ROUND_START.push(async b=>{
+  const f=b.foes.find(x=>x.manaB&&x.godB&&!x.dead);if(!f||b.round!==1)return;
+  f.bloom=0;f.shiniki=false;B.mrScat=0;
+  await say('マナの 足元で 紫薔薇が 揺れている……\n【神域】マナは 神。条件が 満ちたとき、神域を 展開する。',2800);});
+/* 全体を薙ぎ払うと 薔薇が 1輪 散る（1ターンに 1輪まで） */
+ACT_POST.push(async(m,c)=>{
+  const f=B&&B.foes&&B.foes.find(x=>x.manaB&&x.godB&&!x.dead&&!x.shiniki);if(!f||B.end)return;
+  if(c.t==='skill'&&c.s&&c.s.t==='all'&&(c.s.k==='phys'||c.s.k==='mag')&&(f.bloom||0)>0&&B.mrScat!==B.round){
+    B.mrScat=B.round;f.bloom--;if(typeof fxSnd==='function')fxSnd('rose');
+    await say(`全体を 薙ぎ払う 一撃が 薔薇の 花弁を 散らした！\n（咲いている 薔薇：${f.bloom}輪）`,1300);}});
+ROUND_END.push(async b=>{
+  const f=b.foes.find(x=>x.manaB&&x.godB&&!x.dead&&!x.shiniki);if(!f||b.end||f.downed)return;
+  if(f._imm&&!f.immune&&f.budEnd>b.round&&(f.bloom||0)>0){const n=Math.min(2,f.bloom);f.bloom-=n;if(typeof fxSnd==='function')fxSnd('rose');await say(`蕾が 散って、薔薇も ${n}輪 枯れた！\n（咲いている 薔薇：${f.bloom}輪）`,1400);}
+  f._imm=!!f.immune;
+  const add=f.immune?2:1;f.bloom=Math.min(5,(f.bloom||0)+add);
+  if(f.bloom>=5){await say('庭に 紫薔薇が 五輪 咲き揃った——！',1500);await mrBossDomain(f);return;}
+  if(f.bloom>0){if(typeof fxSnd==='function')fxSnd('rose');await say(mnBloomTxt[f.bloom]+(add>1?'\n（茨の結界の 内側では 薔薇の 育ちが 早い）':''),1400);}});
+/* 咲いた薔薇を マナの頭上に 描く */
+{const _df=drawFoe;drawFoe=function(f,x,y,t){_df(f,x,y,t);
+  if(!f.manaB||!f.godB||f.dead||f.shiniki)return;const n=f.bloom||0;if(!n)return;
+  for(let i=0;i<5;i++){const rx=x-24+i*10,ry=y-54+Math.sin(t/300+i)*1.2,on=i<n;g.save();g.globalAlpha=on?1:.25;
+    g.fillStyle=on?'#c060ff':'#402060';g.beginPath();g.arc(rx,ry,4,0,6.283);g.fill();if(on){g.fillStyle='#ff9ae8';g.beginPath();g.arc(rx,ry,2,0,6.283);g.fill();g.fillStyle='#fff0ff';g.fillRect(rx-.5,ry-.5,1,1);}
+    g.strokeStyle='#e0a0ff';g.lineWidth=.8;g.beginPath();g.arc(rx,ry,4,0,6.283);g.stroke();g.restore();}};}
+/* 仲間マナ：敵に 咲かせた 薔薇が 5輪 咲き揃うと 神域（1戦闘に1回・薔薇は すべて散る） */
+ACT_POST.push(async(m,c)=>{
+  if(m.id!=='mana'||m.hp<=0||B.end||B.mnDom||mrAllyDom(m))return;
+  if(!B.foes.some(f=>!f.dead&&f.rose>=5))return;
+  B.mnDom=1;B.foes.forEach(f=>{f.rose=0;});
+  await say(`${pn(m)}が 咲かせた 紫薔薇が すべて 咲き誇った……！`,1500);
+  await mrAllyDomain(m);});
+/* ===== 新キャラ（ノエリア／はてな／黒鎌／マラ）の専用武器クエスト：通常（極限難易度）＋【極】（転生・極） =====
+   通常：推奨9999・5連戦・ドロップ5%（持ち主がパーティにいる時）／ 極：転生後の強化版（性能×1.6・スロット付き） */
+Object.assign(UNIW,{
+ nnoelia:{n:'聖裁の天秤',only:'noelia',mag:50000,def:6000,agi:3000,hp:18000},
+ nhatena:{n:'ひみつの魔導書',only:'hatena',mag:54000,agi:5000,hp:16000},
+ nkuro:{n:'黄眼ノ大鎌',only:'kurogama',atk:48000,agi:9000,def:4000,hp:18000},
+ nmara:{n:'蒼淵ノ神珠',only:'mara',mag:54000,def:5000,agi:4000,hp:24000}});
+Object.values(UNIW).forEach(w=>{w.s=0;w.rk=7;w.uni=true;});
+{
+  const mine=f=>/^(x|wx)/.test(f)||['qmanaB','qmariaB','qhateB','qkuroB','qmaraB'].includes(f);
+  const mk=(id,key,nm,desc,list)=>{
+    const waves=list.map(([ids,lv,say0],i)=>{const n=ids.length,last=i===list.length-1;
+      const foes=ids.map(f=>{
+        if(mine(f)){const hp=last?3.8:n>1?.8:2.5;return [f,{hp,atk:last?1.25:1.1,x:{}}];}
+        const hp=(3.6+.4*i)/(n>1?n*.55:1),atk=4.6+.5*i;return [f,{hp,atk,x:{enrage:14}}];});
+      return {say:say0,lv,boss:true,foes};});
+    return exQuest({id,name:nm,tier:8,lv:9999,rec:9999,uniq:key,alias:'fort',bg:'hell',desc,waves});};
+  const L=[9400,9550,9700,9850,9999];
+  const Q=[
+   mk('nw1','nnoelia','【ノエリア】聖裁の天秤','裁きの 天秤を めぐる、極限の五連戦。\n（ノエリア専用武器：5%）',[
+    [['qmordia'],L[0],'剣の使い手が 立ちはだかる！'],[['qsigu'],L[1],'魔石の力に 呑まれた 男が 暴れる！'],[['qeye'],L[2],'無数の 眼が 開く……！'],[['qdk'],L[3],'魔王の 玉座が 軋む……'],[['qnoe'],L[4],'白い光の中、天秤を 携えた 少女が 目を開く。']]),
+   mk('nw2','nhatena','【はてな】ひみつの魔導書','禁じられた 書を めぐる、極限の五連戦。\n（はてな専用武器：5%）',[
+    [['qpuppet'],L[0],'操られた 彼女が 槍を 振るう！'],[['qluka'],L[1],'白い悪魔が 笑っている。'],[['qmagD'],L[2],'霊気を纏った 死神が 立ちはだかる！'],[['qmeteor'],L[3],'空から 巨大な 隕石が 降ってくる！'],[['qhateB'],L[4],'はてな「これ、なあに？ ……じゃあ、これは？」']]),
+   mk('nw3','nkuro','【黒鎌】黄眼ノ大鎌','影に 棲む 刃を めぐる、極限の五連戦。\n（黒鎌専用武器：5%）',[
+    [['qraiga'],L[0],'雷鳴と共に 獣が 現れた！'],[['qalfard'],L[1],'霊気を操る 魔剣士が 現れた！'],[['qdadelua'],L[2],'氷の雨が 降り注ぐ……！'],[['qsezel'],L[3],'冥界の底から セゼルが 現れた……！'],[['qkuroB'],L[4],'黒鎌「……お前の 影は 美味そうだ」']]),
+   mk('nw4','nmara','【マラ】蒼淵ノ神珠','水底の 神珠を めぐる、極限の五連戦。\n（マラ専用武器：5%）',[
+    [['qdadelua'],L[0],'氷の雨が 降り注ぐ……！'],[['qmeteor'],L[1],'空から 巨大な 隕石が 降ってくる！'],[['qsigu'],L[2],'魔石の力に 呑まれた 男が 暴れる！'],[['qdett'],L[3],'骨の半身を 持つ 大魔王が 目を覚ます！'],[['qmaraB'],L[4],'足元が 水に 浸っている。水底で、誰かが 微笑んだ。']])];
+  /* 【極】版：転生した者のための 強化版（rebirth.js と 同じ作り） */
+  Q.forEach(q=>{if(!q||!q.waves.length)return;
+    const w=UNIW[q.uniq],kk='K'+q.uniq;if(UNIW[kk])return;
+    const nw={...w,n:w.n+'極',kx:true,s:0,rk:7,uni:true};['atk','mag','def','hp','agi'].forEach(k=>{if(w[k])nw[k]=Math.round(w[k]*1.6);});UNIW[kk]=nw;
+    exQuest({...q,id:'K'+q.id,name:q.name+'【極】',tier:12,uniq:kk,lv:q.lv+3000,rec:(q.rec||q.lv)+3000,
+      desc:(q.desc||'')+'\n\n【極】転生した者のための 強化版。\n極専用武器が ドロップする。\n（スロット：持ち主だけ 敵のギミックを 1つ無視できる）',
+      waves:q.waves.map(wv=>({...wv,lv:wv.lv+3000,foes:wv.foes.map(([id,x])=>[id,{...x,hp:(x.hp||1)*1.2,atk:(x.atk||1)*1.15}])}))});});
+}
+/* ===== EXリリス（1次転生5000）／ EXステージ【失いしモノ リリス】（3%で 降臨・1回勝負） =====
+   EXリリスを クリアすると 3%（参加者ごとに抽選＝マルチで 確率アップ）で EXステージが 降臨する。
+   EXステージは 1回だけ 挑戦できる。負けると 消える（また EXリリスを 周回）。
+   クリアで EXキャラ「失いしリリス」が 仲間になる。 */
+
+/* ---------- 見た目：色の抜けた リリス ---------- */
+LOOKS.lilithX={c:'#1a1622',h:'#b8b0c4'};
+(()=>{const b=SPR.lilithL||SPR.lilith,p={...b.pal};
+  Object.assign(p,{h:'#a49cb2',H:'#d8d2e2',d:'#6e6680',D:'#4e4860',S:'#f1ebef',s:'#cdbcc6',E:'#6a5a86',g:'#2c2438',e:'#1a1426',M:'#8a6a78',
+    C:'#18151f',c:'#2c2838',B:'#0c0a12',O:'#100e16',o:'#06050a',Q:'#3a3448',K:'#120e18'});
+  SPR.lilithX={...b,pal:p};})();
+
+/* ---------- 失いしリリス：キャラ定義 ----------
+   特性【空間支配】攻撃が 必ず当たる（回避されない）。
+   特性【記憶ノ断片】1戦闘に1回、倒れる攻撃を 受けても 時間を 巻き戻して HP50%で 踏みとどまる。 */
+HERO.lilithX={n:'失いしリリス',job:'失いしモノ',c:'#1a1622',hair:'#b8b0c4',hp:[42,8.6],mp:[28,4.4],atk:[14,3.0],def:[5,1.6],agi:[18,2.5],mag:[11,2.4],
+ sk:[
+  {n:'影刃',lv:1,mp:3,t:'one',k:'phys',p:1.9},
+  {n:'影槍の雨',lv:1,mp:6,t:'rand',k:'phys',p:.9,hits:4},
+  {n:'影縫い',lv:1,mp:7,t:'one',k:'phys',p:.8,stun:.9,hold:true},
+  {n:'影の領域',lv:5,mp:12,t:'allally',k:'shield',msg:'影が 仲間たちを 包み込む……！'},
+  {n:'時ノ停止',lv:7,mp:18,t:'self',k:'buff',fn:async(m,s,c,head)=>{
+    if(B.lxTS){m.mp=Math.min(stat(m,'mp'),m.mp+s.mp);updateParty();await say(head+'\n……時の 断片が 足りない。\n（時ノ停止は 1戦闘に 1回だけ）',1400);return;}
+    B.lxTS=1;if(typeof LX!=='undefined')await LX.stop(true);
+    const L=[];B.foes.filter(f=>!f.dead).forEach(f=>{if(f.lxB){L.push(`${f.n}「……わたしの 時間を、止める？」（効かない）`);return;}f.held=Math.max(f.held||0,2);});
+    await say(head+'\n時が 止まった――\n敵は 動けない！'+(L.length?'\n'+L.join('\n'):''),1800);}},
+  {n:'無限断裂',lv:10,mp:16,t:'all',k:'phys',p:2.4},
+  {n:'記憶の再演',lv:13,mp:20,t:'one',k:'phys',p:3.4,crit:.3},
+  {n:'ゼロポイント・アビス',lv:16,mp:26,t:'rand',k:'phys',p:1.1,hits:8},
+  {n:'制御ノ禁域',lv:20,mp:36,t:'one',k:'phys',p:9.0,pierce:true}]};
+PCHARS.push('lilithX');NEWC.push('lilithX');PNAME.lilithX='失いしリリス';
+if(!PROF.chars.lilithX)PROF.chars.lilithX={lv:5,exp:0,eq:[null,null]};
+{const _hp=hitParty;hitParty=function(f,m,mult){const d=_hp.apply(this,arguments);
+  if(m&&m.id==='lilithX'&&m.hp<=0&&B&&!B.lxMem){B.lxMem=1;B.lxMemMsg=1;m.hp=Math.max(1,Math.round(stat(m,'hp')*.5));const p=ppos(m);floatTxt(p.x,p.y-22,'記憶ノ断片','#c8b8ff');}
+  return d;};}
+{const _fa=foeAct;foeAct=async function(f){const r=await _fa.apply(this,arguments);
+  if(B&&B.lxMemMsg){B.lxMemMsg=0;await say('失いしリリス「……まだ。ここじゃない」\n【記憶ノ断片】時間が 巻き戻り、HP50%で 踏みとどまった！',1800);}
+  return r;};}
+ULTS.push({sk:'無限断裂',who:'lilithX',a:'#c8b8e8',b:'#ffffff',bg:'#06040c',motif:'ring',strike:'slash',fin:'nova',n:6},
+  {sk:'ゼロポイント・アビス',who:'lilithX',a:'#9a88c8',b:'#ffffff',bg:'#030208',motif:'cross',strike:'slash',fin:'pillar',n:8,short:1});
+CIreg('c_lilithX','lilithX','制御ノ禁域',{a:'#b8a8e0',b:'#ffffff',bg:'#04030a',dom:'void',atk:'rush',n:8,fin:'crack',
+  q:[[1900,'リリス','……動かないで'],[4300,'リリス','ここでは、わたしが 全部'],[6400,'リリス','制御ノ――禁域']]});
+
+/* ---------- 演出 ---------- */
+const LX={P:.03};
+LX.cv=()=>typeof sprCanvas==='function'?sprCanvas('lilithX','s','',32,48):null;
+LX.tc={};LX.tint=col=>{if(LX.tc[col])return LX.tc[col];const cv=LX.cv();if(!cv)return null;const c=document.createElement('canvas');c.width=32;c.height=48;const x=c.getContext('2d');
+  x.drawImage(cv,0,0);x.globalCompositeOperation='source-atop';x.fillStyle=col;x.fillRect(0,0,32,48);return LX.tc[col]=c;};
+LX.port=(x,y,sc,al,o)=>{o=o||{};const cv=o.tint?LX.tint(o.tint):LX.cv();if(!cv||al<=0)return;g.save();g.globalAlpha=Math.min(1,al);
+  if(o.glow){g.shadowColor=o.glow;g.shadowBlur=o.blur||14;}g.imageSmoothingEnabled=false;
+  if(o.clip!=null){g.beginPath();g.rect(0,0,240,y-23*sc+46*sc*o.clip);g.clip();}
+  g.drawImage(cv,0,0,32,46,Math.round(x-16*sc),Math.round(y-23*sc),Math.round(32*sc),Math.round(46*sc));g.restore();};
+LX.pixC=null;LX.pixels=()=>{if(LX.pixC)return LX.pixC;const cv=LX.cv();if(!cv)return [];const d=cv.getContext('2d').getImageData(0,0,32,46).data,L=[];
+  for(let y=0;y<46;y++)for(let x=0;x<32;x++){const i=(y*32+x)*4;if(d[i+3]>100)L.push([x,y,`rgb(${d[i]},${d[i+1]},${d[i+2]})`]);}return LX.pixC=L;};
+/* 夜（時が 止まった 夜空） */
+LX.night=(ms,al,o)=>{o=o||{};if(al<=0)return;g.save();g.globalAlpha=al;const sg=g.createLinearGradient(0,0,0,176);sg.addColorStop(0,'#05040e');sg.addColorStop(.6,'#0c0a1c');sg.addColorStop(1,'#140f22');
+  g.fillStyle=sg;g.fillRect(0,0,240,176);
+  for(let i=0;i<60;i++){const x=LG.r(i+3)*240,y=LG.r(i+9)*120,b=.3+.7*LG.r(i+21);g.globalAlpha=al*b*(o.still?1:(.6+.4*Math.sin(ms/700+i)));g.fillStyle='#e8e4ff';g.fillRect(x|0,y|0,1,1);}
+  g.globalAlpha=al;g.fillStyle='#e8e2f4';g.shadowColor='#c8c0e8';g.shadowBlur=14;g.beginPath();g.arc(196,32,13,0,6.283);g.fill();g.shadowBlur=0;g.fillStyle='#0a0816';g.beginPath();g.arc(201,29,12,0,6.283);g.fill();
+  if(o.floor!==false){const fg=g.createLinearGradient(0,128,0,176);fg.addColorStop(0,'rgba(20,16,34,0)');fg.addColorStop(1,'rgba(4,3,8,.95)');g.globalAlpha=al;g.fillStyle=fg;g.fillRect(0,128,240,48);}
+  g.restore();};
+/* ひび割れ（seed で 形が決まる） */
+LX.crack=(cx,cy,len,u,al,col,seed,n)=>{if(al<=0||u<=0)return;g.save();g.globalAlpha=al;g.strokeStyle=col||'#e8e4ff';g.lineWidth=1;g.shadowColor=col||'#e8e4ff';g.shadowBlur=4;
+  for(let i=0;i<(n||9);i++){const a=LG.r(i+seed)*6.283,L=len*(.5+LG.r(i+seed+40)*.7)*u;g.beginPath();g.moveTo(cx,cy);let px=cx,py=cy;
+    for(let k=1;k<=5;k++){const aa=a+(LG.r(i*9+k+seed)-.5)*.7;px+=Math.cos(aa)*L/5;py+=Math.sin(aa)*L/5;g.lineTo(px,py);
+      if(k===3&&LG.r(i+k+seed+7)<.5){g.moveTo(px,py);g.lineTo(px+Math.cos(aa+1)*L/6,py+Math.sin(aa+1)*L/6);g.moveTo(px,py);}}
+    g.stroke();}g.restore();};
+/* 影の 触手 */
+LX.tendrils=(cx,cy,ms,al,n,len)=>{if(al<=0)return;g.save();g.globalAlpha=al;for(let i=0;i<(n||8);i++){const a0=-Math.PI/2+(i/(n||8)-.5)*2.6;
+  g.strokeStyle=i%2?'#1a1424':'#2a2238';g.lineWidth=3-i%2;g.beginPath();g.moveTo(cx,cy);
+  for(let t=0;t<=1;t+=.1){const L=(len||60)*t,a=a0+Math.sin(ms/300+i+t*4)*.4*t;g.lineTo(cx+Math.cos(a)*L,cy+Math.sin(a)*L*.8);}g.stroke();}g.restore();};
+/* 時計 */
+LX.clock=(cx,cy,r,hA,mA,al,col)=>{if(al<=0)return;col=col||'#e8e4ff';g.save();g.globalAlpha=al;g.strokeStyle=col;g.shadowColor=col;g.shadowBlur=8;g.lineWidth=2;
+  g.beginPath();g.arc(cx,cy,r,0,6.283);g.stroke();g.lineWidth=1;g.beginPath();g.arc(cx,cy,r*.86,0,6.283);g.stroke();
+  for(let i=0;i<12;i++){const a=i/12*6.283;g.beginPath();g.moveTo(cx+Math.cos(a)*r*.86,cy+Math.sin(a)*r*.86);g.lineTo(cx+Math.cos(a)*r*(i%3?.78:.7),cy+Math.sin(a)*r*(i%3?.78:.7));g.stroke();}
+  g.lineWidth=2.5;g.beginPath();g.moveTo(cx,cy);g.lineTo(cx+Math.cos(hA-1.5708)*r*.45,cy+Math.sin(hA-1.5708)*r*.45);g.stroke();
+  g.lineWidth=1.5;g.beginPath();g.moveTo(cx,cy);g.lineTo(cx+Math.cos(mA-1.5708)*r*.72,cy+Math.sin(mA-1.5708)*r*.72);g.stroke();g.restore();};
+LX.title=(a,b,al,y)=>{if(al<=0)return;LG.band(y,30,al*.9,'#a898d0');LG.t(a,120,y-4,13,'#f0ecff',al,'#000',2);if(b)LG.t(b,120,y+9,8,'#a8a0c8',al,'#000',1);};
+LX.q=(t,al)=>{if(al<=0)return;g.save();g.globalAlpha=al*.85;g.fillStyle='#000';g.fillRect(14,148,212,20);g.strokeStyle='#8a80b0';g.strokeRect(14.5,148.5,211,19);g.restore();LG.t(t,120,158,9,'#ece8ff',al,'#000',1);};
+/* 破片（画面が 割れて 飛び散る） */
+LX.shards=(u,al,col)=>{if(al<=0)return;g.save();for(let i=0;i<40;i++){const a=LG.r(i+201)*6.283,r0=LG.r(i+202)*90,x=120+Math.cos(a)*(r0+u*220),y=88+Math.sin(a)*(r0*.7+u*170)+u*u*60;
+  g.globalAlpha=al*(1-u);g.translate(x,y);g.rotate(u*8+i);g.fillStyle=i%3?'#0a0814':'#14101e';g.strokeStyle=col||'#e8e4ff';g.lineWidth=1;
+  const s=4+LG.r(i+203)*9;g.beginPath();g.moveTo(-s,-s*.6);g.lineTo(s,-s*.2);g.lineTo(s*.2,s);g.closePath();g.fill();g.stroke();g.setTransform(1,0,0,1,0,0);}g.restore();};
+
+/* --- 開幕：空っぽの夜 --- */
+LX.openD=(ms,st)=>{
+  LG.dark(1,'#000000');
+  const tA=LG.s(ms,500,1300),tB=LG.s(ms,1900,2700),tC=LG.s(ms,3200,4000),tOut=1-LG.s(ms,6000,6100);
+  LG.t('「……消えた……',62,38,11,'#d8d4e8',tA*tOut,'#000',1);
+  LG.t('空っぽだった。',156,74,11,'#d8d4e8',tB*tOut,'#000',1);
+  LG.t('もう 彼は ここには いない。」',128,110,11,'#d8d4e8',tC*tOut,'#000',1);
+  LG.at(st,'a',ms,500,()=>LG.snd('tick'));LG.at(st,'b',ms,1900,()=>LG.snd('tick'));LG.at(st,'c',ms,3200,()=>LG.snd('tick'));
+  if(ms>4200&&ms<6100){const u=LG.e(LG.s(ms,4200,5900));LX.crack(120,88,170,u,.9,'#f0ecff',7,14);LX.crack(60,40,70,LG.s(ms,4600,5600),.7,'#c8c0e8',31,6);LX.crack(170,120,80,LG.s(ms,4900,5800),.7,'#c8c0e8',57,6);
+    LG.at(st,'d',ms,4300,()=>LG.snd('chime'));LG.at(st,'e',ms,5200,()=>LG.snd('chime'));}
+  LG.at(st,'f',ms,6000,()=>{LG.snd('shatter');LG.snd('boom');shakeScreen();});
+  if(ms>=6000&&ms<12800){const al=1-LG.s(ms,12400,12800);
+    LX.night(ms,al,{still:true});
+    /* 影の 水たまりから 立ち上がる */
+    const rise=LG.e(LG.s(ms,6600,8600));
+    g.save();g.globalAlpha=al*.9;g.fillStyle='#030206';g.beginPath();g.ellipse(120,136,30+rise*16,6,0,0,6.283);g.fill();g.restore();
+    LX.tendrils(120,136,ms,al*LG.s(ms,6400,7200)*(1-LG.s(ms,9600,10400))*.9,10,70);
+    LX.port(120,136-46*rise+2*Math.sin(ms/600),2.0,al*LG.s(ms,6600,7600),{glow:'#8070b0',blur:12,clip:rise});
+    for(let i=0;i<26;i++){const t=((ms-6000)/2600+LG.r(i+300))%1;g.save();g.globalAlpha=al*(1-t)*.7;g.fillStyle=i%2?'#2a2238':'#a89cc8';g.fillRect(120+(LG.r(i+301)-.5)*90,136-t*110,2,2);g.restore();}
+    if(ms<6400){LX.shards(LG.s(ms,6000,6400)*.2,1,'#ffffff');g.save();g.globalAlpha=1-(ms-6000)/400;g.fillStyle='#ffffff';g.fillRect(0,0,240,176);g.restore();}
+    if(ms>=6000&&ms<7400)LX.shards(LG.s(ms,6000,7400),1,'#e8e4ff');
+    /* 止まった 時計 */
+    LX.clock(120,62,40,4.6,0,al*LG.s(ms,8200,8800)*(1-LG.s(ms,9600,10200))*.5,'#a89cc8');
+    LG.t('――時は、夜で 止まっている。',120,22,9,'#c8c0e8',LG.s(ms,8400,8900)*(1-LG.s(ms,9800,10200)),'#000',1);
+    LG.at(st,'g',ms,8400,()=>LG.snd('tick'));
+    if(ms>=10000){const a2=LG.s(ms,10000,10400)*al;
+      LX.title('失いしモノ　リ リ ス','―― 空っぽの 夜 ――',a2,124);
+      LG.stamp('失',206,58,22,a2*LG.s(ms,10400,10600),.15,'#c8b8ff');LG.at(st,'s',ms,10400,()=>{LG.snd('boom');shakeScreen();});
+      LX.q('「……ここには、もう 何も ないよ」',al*LG.s(ms,10900,11300));}}
+};
+LX.open=()=>LG.play(13200,LX.openD);
+/* --- 絶対領域：制御の禁域 --- */
+LX.kinD=(ms,st)=>{
+  const cx=120,cy=82,al=1-LG.s(ms,7800,8200);
+  LX.night(ms,al,{still:true});
+  if(ms<300){g.save();g.globalAlpha=1-ms/300;g.fillStyle='#ffffff';g.fillRect(0,0,240,176);g.restore();}
+  LG.at(st,'a',ms,0,()=>{LG.snd('shatter');shakeScreen();});
+  /* 空間が 格子に 区切られ、内側へ 圧縮されていく */
+  const u=LG.e(LG.s(ms,400,3200)),sq=1-.45*LG.e(LG.s(ms,3000,4600));
+  g.save();g.globalAlpha=al*.8;g.strokeStyle='#a898d0';g.lineWidth=1;
+  for(let i=-6;i<=6;i++){const x=cx+i*20*sq*u,y=cy+i*14*sq*u;g.globalAlpha=al*.6*(1-Math.abs(i)/7);
+    g.beginPath();g.moveTo(x,0);g.lineTo(x,176);g.stroke();g.beginPath();g.moveTo(0,y);g.lineTo(240,y);g.stroke();}g.restore();
+  /* 重力の 線（下向き） */
+  if(ms>2400){for(let i=0;i<30;i++){const x=LG.r(i+410)*240,t=((ms/500)+LG.r(i+411))%1;g.save();g.globalAlpha=al*.5*(1-t);g.fillStyle='#d8d0f0';g.fillRect(x,t*176,1,10+LG.r(i)*12);g.restore();}}
+  LG.at(st,'b',ms,600,()=>LG.snd('magic'));LG.at(st,'c',ms,3000,()=>{LG.snd('boom');shakeScreen();});
+  LX.port(cx,cy+6+Math.sin(ms/500)*2,1.8,al*LG.s(ms,600,1400),{glow:'#c8b8ff',blur:16});
+  /* 瞳が 光る */
+  if(ms>3200&&ms<4400){const a=Math.sin(LG.s(ms,3200,4400)*Math.PI);for(const ex of [-6,6]){g.save();g.globalCompositeOperation='lighter';g.globalAlpha=al*a;const gr=g.createRadialGradient(cx+ex*1.6,cy-13,0,cx+ex*1.6,cy-13,12);
+    gr.addColorStop(0,'#ffffff');gr.addColorStop(.4,'#a898e8');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(cx+ex*1.6-12,cy-25,24,24);g.restore();}}
+  LX.crack(cx,cy,140,LG.s(ms,4400,5200),al*(1-LG.s(ms,6400,7200)),'#e8e4ff',91,12);
+  LG.at(st,'d',ms,4400,()=>{LG.snd('shatter');shakeScreen();});
+  LG.stamp('禁　域',120,26,18,al*LG.s(ms,4800,5000),-.05,'#c8b8ff');LG.at(st,'e',ms,4800,()=>LG.snd('boom'));
+  LX.title('『絶対領域：制御の禁域』','―― ここでは、わたしの 意志が 全て ――',al*LG.s(ms,5400,5800),134);
+  LX.q('「……動かないで。全部、止めてあげる」',al*LG.s(ms,6400,6800)*(1-LG.s(ms,7600,7800)));};
+LX.kin=()=>LG.play(8200,LX.kinD);
+/* --- 時間停止 --- */
+LX.stop=(ally)=>LG.play(3600,(ms,st)=>{
+  const al=1-LG.s(ms,3200,3600);
+  g.save();g.globalAlpha=al*LG.s(ms,0,400);g.globalCompositeOperation='saturation';g.fillStyle='#808080';g.fillRect(0,0,240,176);g.restore();
+  LG.dark(al*.45*LG.s(ms,0,400),'#06040e');
+  const sp=1-LG.e(LG.s(ms,200,1800));LX.clock(120,80,44,ms/900*sp+.8,ms/90*sp+.2,al,'#e8e4ff');
+  LG.at(st,'a',ms,100,()=>LG.snd('tick'));LG.at(st,'b',ms,700,()=>LG.snd('tick'));LG.at(st,'c',ms,1500,()=>LG.snd('tick'));
+  LG.at(st,'d',ms,1900,()=>{LG.snd('chime');shakeScreen();});
+  if(ms>1900&&ms<2200){g.save();g.globalAlpha=(1-(ms-1900)/300)*.6;g.fillStyle='#ffffff';g.fillRect(0,0,240,176);g.restore();}
+  LG.t(ally?'――時ノ停止':'時よ、止まれ',120,140,14,'#f0ecff',LG.s(ms,1900,2200)*al,'#000',2);});
+/* --- 記憶ノ断片：時間の 巻き戻し --- */
+LX.rewindD=(ms,st)=>{
+  const al=1-LG.s(ms,5200,5600);
+  g.save();g.globalAlpha=al*LG.s(ms,0,300);g.globalCompositeOperation='difference';g.fillStyle='#d8d0e8';g.fillRect(0,0,240,176);g.restore();
+  LG.dark(al*.75,'#05030c');
+  const sp=LG.e(LG.s(ms,300,3600));LX.clock(120,80,48,-sp*18,-sp*80,al,'#e8e4ff');LX.clock(120,80,64,sp*6,sp*30,al*.35,'#a898d0');
+  for(let i=0;i<18;i++){const t=(ms/700+LG.r(i+500))%1,a=LG.r(i+501)*6.283,r=90*(1-t);g.save();g.globalAlpha=al*t;g.fillStyle='#c8b8ff';g.fillRect(120+Math.cos(a)*r,80+Math.sin(a)*r*.7,2,2);g.restore();}
+  LG.at(st,'a',ms,0,()=>{LG.snd('shatter');shakeScreen();});[400,800,1100,1350,1550,1700,1820,1920].forEach((t,i)=>LG.at(st,'t'+i,ms,t,()=>LG.snd('tick')));
+  LX.port(120,84,1.6,al*LG.s(ms,1800,2800),{glow:'#c8b8ff'});LX.port(120,84,1.6,al*(1-LG.s(ms,2600,3400))*LG.s(ms,1800,2200),{tint:'#ffffff'});
+  LG.stamp('記憶ノ断片',120,28,16,al*LG.s(ms,2400,2600),.04,'#e8e4ff');LG.at(st,'b',ms,2400,()=>LG.snd('boom'));
+  LX.q('「……まだ。ここで 終わるのは、ちがう」',al*LG.s(ms,3400,3800));};
+LX.rewind=()=>LG.play(5600,LX.rewindD);
+/* --- 世界の再生（コスモスリバース） --- */
+LX.rebornD=(ms,st)=>{
+  const al=1-LG.s(ms,7200,7600),cx=120,cy=84;
+  LX.night(ms,al,{still:true});
+  g.save();g.globalAlpha=al*.35*LG.s(ms,0,1200);g.fillStyle='#3a0010';g.fillRect(0,0,240,176);g.restore();
+  /* 世界が ひび割れ、命の光が 吸い込まれていく */
+  LX.crack(0,0,240,LG.s(ms,200,1400),al,'#ff5a7a',601,6);LX.crack(240,176,240,LG.s(ms,500,1600),al,'#ff5a7a',631,6);LX.crack(240,0,200,LG.s(ms,800,1800),al,'#ff8aa0',661,5);LX.crack(0,176,200,LG.s(ms,1000,2000),al,'#ff8aa0',691,5);
+  LG.at(st,'a',ms,200,()=>{LG.snd('shatter');shakeScreen();});LG.at(st,'b',ms,1200,()=>LG.snd('magic'));
+  if(ms>1200&&ms<5200){for(let i=0;i<60;i++){const t=((ms-1200)/1400+LG.r(i+700))%1,a=LG.r(i+701)*6.283,r=150*(1-LG.e(t));
+    g.save();g.globalCompositeOperation='lighter';g.globalAlpha=al*Math.sin(t*Math.PI)*.9;g.fillStyle=i%3?'#7affb0':'#fff2a0';g.fillRect(cx+Math.cos(a)*r,cy+Math.sin(a)*r*.75,2,2);g.restore();}}
+  const rise=LG.e(LG.s(ms,2200,4200));LX.port(cx,cy+30-30*rise,1.9,al*rise,{glow:'#ff5a7a',blur:18});
+  LX.port(cx,cy+30-30*rise,1.9,al*rise*(1-LG.s(ms,3600,4800)),{tint:'#ffffff'});
+  LG.at(st,'c',ms,4200,()=>{LG.snd('boom');LG.snd('chime');shakeScreen();});
+  if(ms>4200&&ms<4500){g.save();g.globalAlpha=1-(ms-4200)/300;g.fillStyle='#ffe8f0';g.fillRect(0,0,240,176);g.restore();}
+  LX.title('世界の再生','―― コスモスリバース ――',al*LG.s(ms,4600,5000),136);
+  LX.q('「あの人の いない 世界なんて、いらない」',al*LG.s(ms,5600,6000)*(1-LG.s(ms,7000,7200)));};
+LX.reborn=()=>LG.play(7600,LX.rebornD);
+/* --- 敗北：影に 還る --- */
+LX.fall=()=>LG.play(8400,(ms,st)=>{
+  const al=1-LG.s(ms,8000,8400),cx=120,cy=86;
+  LX.night(ms,al,{});
+  const u=LG.s(ms,2600,6200),P=LX.pixels();
+  if(ms<2600)LX.port(cx,cy+Math.sin(ms/700)*1.5,1.8,al,{glow:'#8070b0'});
+  else{g.save();for(let i=0;i<P.length;i++){const [px,py,c]=P[i],d=Math.max(0,u*1.6-LG.r(i+800)*.6-(1-py/46)*.4);
+      const x=cx+(px-16)*1.8+d*(LG.r(i+801)-.5)*80,y=cy+(py-23)*1.8-d*d*90;g.globalAlpha=al*Math.max(0,1-d);g.fillStyle=d>.15?'#a898d0':c;g.fillRect(x,y,2,2);}g.restore();}
+  LG.at(st,'a',ms,2600,()=>LG.snd('chime'));
+  LX.q('「……ねえ」',al*LG.s(ms,600,1000)*(1-LG.s(ms,2200,2600)));
+  LX.q('「……まだ、何も 失ってないんだね」',al*LG.s(ms,2800,3200)*(1-LG.s(ms,5200,5600)));
+  LX.q('「……少しだけ、羨ましい」',al*LG.s(ms,5800,6200));
+  /* 夜明け */
+  if(ms>6200){g.save();g.globalAlpha=al*LG.s(ms,6200,8000)*.6;const sg=g.createLinearGradient(0,176,0,60);sg.addColorStop(0,'#ffb88a');sg.addColorStop(1,'rgba(255,184,138,0)');g.fillStyle=sg;g.fillRect(0,60,240,116);g.restore();
+    LG.t('――夜が、明けた。',120,40,11,'#fff2e0',al*LG.s(ms,6800,7200),'#000',1);}});
+/* --- 降臨 --- */
+LX.descend=()=>LG.play(6200,(ms,st)=>{
+  const al=1-LG.s(ms,5800,6200);LG.dark(al,'#000000');
+  LX.crack(120,88,180,LG.e(LG.s(ms,300,1800)),al,'#e8e4ff',901,16);
+  LG.at(st,'a',ms,300,()=>{LG.snd('shatter');shakeScreen();});
+  LX.port(120,90,1.7,al*LG.s(ms,1800,3000),{glow:'#8070b0',blur:14});
+  LG.stamp('降　臨',120,30,20,al*LG.s(ms,2600,2800),-.04,'#e8e4ff');LG.at(st,'b',ms,2600,()=>{LG.snd('boom');shakeScreen();});
+  LX.title('【失いしモノ リリス】','EXステージ ―― 挑戦は、一度きり',al*LG.s(ms,3200,3600),142);});
+
+
+/* --- 壊れていく 演出（3回目の 復活） --- */
+const LXNOST=new Proxy({},{get:()=>1});
+LX.glitch=(ms,amt)=>{if(amt<=0)return;const f0=Math.floor(ms/70);
+  for(let i=0;i<Math.round(7*amt);i++){const y=(LG.r(i+f0*13)*176)|0,h=2+((LG.r(i+f0*7+1)*18)|0),dx=((LG.r(i+f0*3+2)-.5)*70*amt)|0;g.drawImage(g.canvas,0,y,240,h,dx,y,240,h);}
+  if(LG.r(Math.floor(ms/90)+5)<.35*amt){g.save();g.globalCompositeOperation='difference';g.fillStyle='#ffffff';g.fillRect(0,0,240,176);g.restore();}
+  if(LG.r(Math.floor(ms/110)+9)<.4*amt){g.save();g.globalAlpha=.45;g.globalCompositeOperation='lighter';g.drawImage(g.canvas,4,0);g.globalCompositeOperation='source-over';g.globalAlpha=.22;g.fillStyle='#ff1838';g.fillRect(0,0,240,176);g.restore();}
+  for(let i=0;i<Math.round(10*amt);i++){if(LG.r(i+f0*5+3)>.5)continue;g.fillStyle=['#ff2a46','#00ffd0','#ffffff','#000000','#a898e8'][i%5];g.fillRect((LG.r(i+f0+4)*240)|0,(LG.r(i+f0+6)*176)|0,4+((LG.r(i+f0+8)*26)|0),1+((LG.r(i+f0+9)*5)|0));}};
+LX.SEG=(()=>{const L=[];let t=0,len=720;while(t<7300){L.push([t,len]);t+=len;len=Math.max(120,len*.84);}return L;})();
+LX.brokenD=(ms,st)=>{
+  const al=1-LG.s(ms,15600,16000);
+  if(ms<4200){LX.night(ms,1,{still:true});LG.dark(.55,'#000');const sh=LG.s(ms,0,4200)*3;
+    LX.port(120+(LG.r(Math.floor(ms/40))-.5)*sh,96,1.7,1,{glow:'#ff2a46',blur:10});
+    const Q=[['「まだ……まだよ……」',300,'#e8e4ff'],['「まだ 終わりたくない……」',1300,'#e8e4ff'],['「だって まだ……」',2300,'#ffd0d8'],['「マグを 見つけられてない……！！」',3100,'#ff4a64']];
+    Q.forEach(([t,s0,c],k)=>LG.t(t,120+(k===3?(LG.r(Math.floor(ms/30))-.5)*4:0),22+k*16,k===3?12:10,c,LG.s(ms,s0,s0+300),'#000',k===3?2:1));
+    LG.at(st,'q3',ms,3100,()=>{LG.snd('boom');shakeScreen();});
+    LX.glitch(ms,LG.s(ms,1500,4200)*.6);return;}
+  if(ms<11500){const t=ms-4200,k=LX.SEG.findIndex(([a,l])=>t>=a&&t<a+l),sg=LX.SEG[Math.max(0,k)],u=Math.min(1,(t-sg[0])/sg[1]),sc=k%5;
+    LG.at(st,'g'+k,ms,4200+sg[0],()=>{LG.snd(k%3?'tick':'shatter');if(k%4===0)shakeScreen();});
+    LX.night(ms,1,{still:true});
+    if(sc===0||sc===4)LX.openD(13200*(1-u)*(sc?1:.9),LXNOST);else if(sc===1)LX.kinD(8200*(1-u),LXNOST);else if(sc===2)LX.rebornD(7600*(1-u),LXNOST);else LX.rewindD(5600*(1-u),LXNOST);
+    const sp=t/400+t*t/900000;LX.clock(120,88,60,-sp*3,-sp*14,.55,'#ffffff');
+    if(k%2)LG.stamp('記憶ノ断片',60+LG.r(k)*120,30+LG.r(k+1)*110,10+LG.r(k+2)*10,.8,(LG.r(k+3)-.5)*.6,k%3?'#e8e4ff':'#ff4a64');
+    LX.glitch(ms,.5+.5*LG.s(t,0,7300));return;}
+  if(ms<12300){LG.dark(1,'#000');if(ms>12100){g.save();g.globalAlpha=1-(ms-12100)/200;g.fillStyle='#fff';g.fillRect(0,0,240,176);g.restore();}LG.at(st,'w',ms,12100,()=>{LG.snd('shatter');LG.snd('boom');shakeScreen();});return;}
+  LX.night(ms,al,{still:true});
+  g.save();g.globalAlpha=al*.12;g.fillStyle='#e8e4ff';g.font='7px sans-serif';for(let y=6;y<176;y+=10)g.fillText('記憶ノ断片 記憶ノ断片 記憶ノ断片 記憶ノ断片 記憶ノ断片',-((ms/8+y*7)%60),y);g.restore();
+  LX.crack(120,80,200,1,al*.6,'#ff4a64',1401,14);
+  LX.port(120+(LG.r(Math.floor(ms/60))-.5)*3,86,1.9,al,{glow:'#ff2a46',blur:16});
+  for(const ex of [-6,6]){g.save();g.globalCompositeOperation='lighter';g.globalAlpha=al*(.6+.4*Math.sin(ms/40));const gr=g.createRadialGradient(120+ex*1.9,62,0,120+ex*1.9,62,10);gr.addColorStop(0,'#ffffff');gr.addColorStop(.4,'#ff2a46');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(120+ex*1.9-10,52,20,20);g.restore();}
+  LX.title('失いしモノ　リ リ ス','―― 壊れた 時計 ――',al*LG.s(ms,12600,13000),126);
+  LX.q('「……もどって。もどって。もどって。もどって」',al*LG.s(ms,13600,14000));
+  LX.glitch(ms,.35*al);};
+LX.broken=()=>LG.play(16000,LX.brokenD);
+/* --- HPが 10%減るたびの 抗い --- */
+LX.CL=[[['「いや……','いやぁぁぁっ！！」'],'――記憶ノ断片。……針は、震えるだけ。'],[['「戻って……戻ってよ……！','お願いだから……！」'],'――時間は、もう 戻らない。'],
+  [['「どうして……','どうして 戻らないの……っ」'],'――HPは、もう 戻らない。'],[['「マグ……マグぅ……っ！','どこに いるの……！」'],'――時計が、砕けた。']];
+LX.cling=k=>LG.play(4600,(ms,st)=>{const al=1-LG.s(ms,4200,4600),[L,sub]=LX.CL[k];
+  LG.dark(al*.7,'#04020a');
+  const jit=ms<2400?Math.sin(ms/30)*.25*(1-ms/2400):0,brk=LG.s(ms,2400,2700);
+  LX.clock(120,74,46,-.4+jit,-.2-jit*3,al*(1-brk*.6),'#e8e4ff');
+  if(ms>2400){LX.crack(120,74,90,LG.e(brk),al,'#ff4a64',1500+k*31,12);LG.at(st,'b',ms,2400,()=>{LG.snd('shatter');shakeScreen();});}
+  if(ms>2400&&ms<2600){g.save();g.globalAlpha=al*(1-(ms-2400)/200)*.5;g.fillStyle='#ff2a46';g.fillRect(0,0,240,176);g.restore();}
+  LX.port(120+(LG.r(Math.floor(ms/35))-.5)*4,112,1.3,al,{glow:'#ff2a46',tint:LG.r(Math.floor(ms/80))<.2?'#ffffff':null});
+  LG.at(st,'a',ms,100,()=>{LG.snd('boom');shakeScreen();});[500,800,1100,1400,1700,2000].forEach((t,i)=>LG.at(st,'t'+i,ms,t,()=>LG.snd('tick')));
+  L.forEach((t,i)=>LG.t(t,120+(LG.r(Math.floor(ms/30)+i)-.5)*3,20+i*15,11,'#ff6a80',al*LG.s(ms,150+i*350,450+i*350),'#000',2));
+  LG.t(sub,120,160,9,'#d8d4e8',al*LG.s(ms,2800,3200),'#000',1);
+  LX.glitch(ms,(.25+.15*k)*al*(ms<2400?1:.6));});
+async function lxRestore(){
+  if(S.flags)S.flags.shinjuUsed=false;
+  for(const m of S.party){m.curse=0;m.cursedDead=false;m.shinju=false;m.invUntil=0;m.bound=0;m.sealed=0;m.buff=0;m.mpBreak=false;m.shinU=0;m.shinPend=false;
+    m.hp=stat(m,'hp');m.mp=stat(m,'mp');}
+  B.lxTS=0;B.lxMem=0;B.mrCtr=0;B.mrAc={};B.mnDom=0;updateParty();}
+ACT_POST.push(async(m,c)=>{const f=B&&B.foes&&B.foes.find(x=>x.lxB&&!x.dead);if(!f||f.ph!==3||B.end)return;
+  const pct=f.hp/f.mhp,TH=[.4,.3,.2,.1];let k=-1;for(let i=0;i<TH.length;i++)if(pct<=TH[i]&&(f.lxTh||0)<=i)k=i;
+  if(k<0)return;f.lxTh=k+1;await LX.cling(k);
+  await say(`リリス${LX.CL[k][0].join('')}\n${LX.CL[k][1]}\n（リリスの HPは もう 戻らない）`,2400);});
+/* ---------- ボス：EXリリス（周回用） ---------- */
+QB('lxE','EXリリス','maid','#2a1a2e',[{n:'ファントムステップ',k:'weak',m:1.7,w:4},{n:'シャドウ・ラッシュ',k:'multi',n2:5,m:.6,w:3},{n:'アビスウェーブ',k:'all',m:1.0,w:3},{n:'影縛り',k:'bind',cnt:1,w:2},
+  CH('紅の精霊・解放','all',2.0,'リリスの 周りに 紅い精霊が 集まっていく……！\n（全体攻撃の予兆！）',(f,b)=>b.round>=3,3)],{spr:'lilithL',eva:.12,enrage:25,pctDmg:.1,deathMsg:'EXリリス「……まだ、足りない？」'});
+ROUND_END.push(async b=>{const f=b.foes.find(x=>x.id==='lxE'&&!x.dead);if(!f||f.lxRage||f.hp>f.mhp*.5)return;f.lxRage=1;f.atk=Math.round(f.atk*1.3);
+  await say('EXリリス「……デスシャドウ」\nリミッターが 外れた！（攻撃力 上昇）',1600);});
+ncQ('lx1','【EXリリス】',5000,'fort','hell','闇を 纏った リリスが 待っている。\nクリアすると ごくまれに 何かが 降臨する。\n（3%：協力プレイで 人数分 抽選）',
+  [{say:'夜の 回廊の 奥――\nリリスが ゆっくりと 振り返った。\nEXリリス「……来たんだ。じゃあ、遊ぼっか」',lv:ncRB(5000),boss:true,foes:[['lxE',{hp:3.0,atk:1.25}]]}],{gem:3000,gemR:150});
+
+/* ---------- ボス：失いしモノ リリス ---------- */
+const lxBoss=()=>B&&B.foes&&B.foes.find(f=>f.lxB&&!f.dead);
+function lxMul(f){return (f.kin>=B.round?1.3:1)*(f.ph===2?1.2:f.ph===3?.8:1);}
+async function lxDo(f,nm,k,m,o){await exAtk(f,nm,k,m*lxMul(f),o||{});}
+async function lxAct(f){
+  const L=[['無限断裂','all',.75,3],['ゼロポイント・アビス','multi',.5,3,{n:6,seal:1}],['影縫い','one',.8,2,{bind:1}],['影槍','weak',1.35,3],['記憶の再演','top',1.1,2]];
+  let tot=L.reduce((a,x)=>a+x[3],0),r=rr()*tot,p=L[0];for(const x of L){r-=x[3];if(r<=0){p=x;break;}}
+  const nm=p[0]==='記憶の再演'?`記憶の再演「${B.lxLast||'影刃'}」`:p[0];
+  await lxDo(f,nm,p[1],p[2],p[4]);}
+async function lxAI(f){
+  const n=(f.tired>=B.round||f.ph===3)?1:2;
+  for(let i=0;i<n;i++){if(!alivePty().length||f.dead||f.downed||B.end)return;await lxAct(f);}}
+async function lxTimeUp(f){
+  await say('リリス「……朝は、来ないよ」\n夜が 世界を 呑み込んでいく――',2000);
+  await exWipe('――夜は 明けなかった。');}
+FOES.lxB={...UB,n:'失いしモノ リリス',k:'maid',spr:'lilithX',col:'#1a1622',lxB:true,immortal:true,capPct:.04,pctDmg:.16,enrage:32,
+  ai:lxAI,enrageFn:lxTimeUp,openFx:()=>LX.open(),bgm:'lostbgm',deathMsg:'リリスは 影に 還っていった……'};
+/* 与ダメージ：読まれた者は 0／禁域中は 半減＋反射／疲労中は 1.5倍（上限の 後に かかる） */
+{const _dc=window.DMGCAP;window.DMGCAP=function(m,s,f,r){const o=_dc.apply(this,arguments);
+  if(!f||!f.lxB||!B)return o;
+  if(B.lxRead===m.id&&!(f.tired>=B.round)){r.d=0;const p=foePos(f);floatTxt(p.x+(rr()-.5)*20,p.y-30,'読まれた','#c8b8ff');return o;}
+  if(f.kin>=B.round){r.d=Math.max(1,Math.round(r.d*.5));B.lxRef=B.lxRef||{};const k=m.id+':'+B.round,cap=Math.round(stat(m,'hp')*.2),got=B.lxRef[k]||0,rf=Math.min(cap-got,Math.round(r.d*.3));
+    if(rf>0&&m.hp>0){B.lxRef[k]=got+rf;m.hp=Math.max(0,m.hp-rf);const p=ppos(m);floatTxt(p.x,p.y-18,'-'+rf,'#c8b8ff');updateParty();}}
+  else if(f.tired>=B.round)r.d=Math.round(r.d*1.5);
+  return o;};}
+/* 最後に 使われた 技を 覚える（記憶の再演） */
+ACT_POST.push(async(m,c)=>{if(!lxBoss())return;if(c.t==='skill'&&c.s&&c.s.n)B.lxLast=c.s.n;else if(c.t==='atk')B.lxLast='こうげき';});
+ROUND_START.push(async b=>{
+  const f=b.foes.find(x=>x.lxB&&!x.dead);if(!f)return;
+  if(b.round===1){f.ph=0;f.hpH=[];f.kin=0;f.tired=0;b.lxRead=null;window.__BRK=0;
+    await say('リリス「……誰？」\n「……ううん。誰でも いい。もう、関係ないから」',2800);
+    if(S.party.some(m=>m.id==='lilith'))await say('リリス「……昔の わたし？\n　まだ 笑えるんだね。……そっか」',2600);
+    await say('【失いしモノの 掟】\n・時は 夜で 止まっている（32ターンで 時間切れ）\n・1撃の上限 最大HPの4%・2回行動\n・思考を 読まれた者の 攻撃は 届かない\n・3ターンごとに 強化が 消える\n・5ターンごとに 時が 止まる\n・彼女は 一度では 終わらない',5200);}
+  f.hpH.push(f.hp);if(f.hpH.length>4)f.hpH.shift();
+  if(f.ph===3)return;
+  /* 禁域の 終わり → 精神の 疲労 */
+  if(f.kin&&b.round===f.kin+1){f.kin=0;f.tired=b.round+1;b.lxRead=null;
+    await say('禁域が 解けた――\nリリスの 集中が 途切れている！\n（2ターン：受けるダメージ1.5倍・行動1回・思考を 読めない）',2200);}
+  /* 禁域 */
+  else if([7,17,27].includes(b.round)&&!f.tired){await LX.kin();f.kin=b.round+1;b.lxRead=null;
+    await say('【絶対領域：制御の禁域】\n2ターンの間：与えるダメージ 半減・その3割を 反射される\nリリスの攻撃 1.3倍\n（禁域の 後は、精神の 疲労で 隙が できる）',3600);}
+  /* 思考読み */
+  if(!(f.tired>=b.round)){const al=alivePty();const c=al.filter(m=>m.id!==b.lxRead);const t=(c.length?c:al)[Math.floor(rr()*(c.length?c:al).length)];
+    if(t){b.lxRead=t.id;await say(`リリス「……${pn(t)}。次の手、もう 見えてる」\n（このターン ${pn(t)}の攻撃は 届かない）`,1500);}}
+  else b.lxRead=null;
+  /* 空間の 掟：優位は 存在できない */
+  if(b.round%3===0){const L=S.party.filter(m=>m.hp>0&&(m.buff>0||m.shield>0));L.forEach(m=>{m.buff=0;m.shield=0;});
+    if(L.length){updateParty();await say('リリス「……この空間に、あなたたちの 優位は 存在できない」\n（強化と シールドが 消えた！）',1700);}}
+  /* 時間停止の 予兆 */
+  if(b.round%5===4)await say('……時計の 針の音が、遠のいていく。\n（このターンの 終わりに 時が 止まる！）',1700);});
+ROUND_END.push(async b=>{
+  const f=b.foes.find(x=>x.lxB&&!x.dead);if(!f)return;
+  /* 時間停止：止まった世界で 2回 動く */
+  if(b.round%5===4&&f.ph!==3&&!f.downed&&alivePty().length&&!b.end){await LX.stop(false);
+    await say('時が 止まった――\n止まった 世界で、リリスだけが 動いている。',1600);
+    for(let i=0;i<2&&alivePty().length&&!b.end;i++)await lxAct(f);
+    if(!b.end)await say('……時が、動き出した。',1100);}
+  /* 世界の命が 削られる（再生後） */
+  if(f.ph===2&&!f.downed&&!b.end){let any=0;S.party.forEach(m=>{if(m.hp>1){m.hp=Math.max(1,m.hp-Math.round(stat(m,'hp')*.05));any=1;}});
+    if(any){updateParty();await say('世界の 命が 削られていく……\n（全員 最大HPの5%ダメージ）',1100);}}
+  if(!f.downed||b.end)return;
+  f.downed=false;
+  if(f.ph===0){f.ph=1;window.__BRK=.15;
+    await say('リリス「……あ」',900);await LX.rewind();
+    const back=Math.max(f.hpH[0]||0,Math.round(f.mhp*.2));f.hp=Math.min(f.mhp,back);f.hpH=[f.hp];f.held=0;f.kin=0;f.tired=0;updateParty();
+    await say('【記憶ノ断片】\n時間が 巻き戻った――！\nリリスの 傷が 数ターン前に 戻っていく……',2600);return;}
+  if(f.ph===1){f.ph=2;window.__BRK=.35;
+    await say('リリス「……いやだ。まだ、消えたくない」',1500);await LX.reborn();
+    f.hp=Math.round(f.mhp*.4);f.held=0;f.kin=0;f.tired=0;updateParty();
+    await say('【世界の再生（コスモスリバース）】\nリリスは 世界の 命を 喰らって 蘇った！\n（以後 毎ターン 全員 最大HPの5%ダメージ／リリスの攻撃 1.2倍）',3200);return;}
+  if(f.ph===2){f.ph=3;window.__BRK=.6;f.lxTh=0;
+    await say('リリス「……まだ……」',900);await LX.broken();
+    f.hp=Math.round(f.mhp*.5);f.held=0;f.kin=0;f.tired=0;b.lxRead=null;await lxRestore();
+    await say('【記憶ノ断片・暴走】\nリリスは 記憶ノ断片を 無理矢理 繰り返した――\n時間が 何度も 何度も 巻き戻っていく。',2600);
+    await say('時間が 戻りすぎて――\nあなたたちの 傷も、呪いも、なかったことに なった。\n（全員 完全回復・蘇生／1戦闘1回の技も もう一度 使える）',3200);
+    await say('リリス「もどって……もどってよ……\n　まだ、なにも……おわってない……」\n（リリスは もう、まともに 戦えていない）',2600);return;}
+  await LX.fall();window.__BRK=0;
+  f.immortal=false;f.hp=0;f.dead=true;updateParty();
+  await say('リリス「……もし、もう一度 笑えるなら。\n　あなたたちの そばが、いいな」',3000);});
+/* 戦いの 進み方で 背景が 壊れていく */
+{const _df=drawFoe;drawFoe=function(f,x,y,t){
+  if(f.lxB&&B&&B.bg==='lostnight'){const ga=g.globalAlpha;g.globalAlpha=1;LX.night(t,1,{});g.globalAlpha=ga;}
+  if(f.lxB&&!f.dead){const ph=f.ph||0;
+    if(ph>=1){LX.crack(x,y-10,120,1,.25+.1*Math.sin(t/300),'#c8c0e8',1101,8);}
+    if(ph>=2){LX.crack(x,y-10,200,1,.35+.15*Math.sin(t/200),'#ff5a7a',1201,10);}
+    for(let i=0;i<14;i++){const u=((t/2400)+LG.r(i+1300))%1;g.save();g.globalAlpha=(1-u)*.6;g.fillStyle=i%2?'#1a1424':'#8a80b0';g.fillRect(x+(LG.r(i+1301)-.5)*60,y+20-u*70,2,2);g.restore();}
+    if(f.kin>=B.round){g.save();g.globalAlpha=.4;g.strokeStyle='#c8b8ff';g.lineWidth=1;g.strokeRect(x-38,y-46,76,92);g.restore();}}
+  _df(f,x,y,t);};}
+/* 戦闘が 終わったら 壊れ具合を 戻す */
+{const _rb=runBattle;runBattle=async function(){try{return await _rb.apply(this,arguments);}finally{window.__BRK=0;}};}
+
+/* ---------- EXステージ（降臨したときだけ 出る） ---------- */
+const LXQ=ncQ('lx2','【失いしモノ リリス】',5500,'fort','lostnight','EXステージ。夜で 止まった 世界に、彼女は いる。\n挑戦は 1回だけ。負けると 消える。\n（クリアで 失いしリリスが 仲間になる）',
+  [{say:'夜の 底――\n色の抜けた 少女が、ひとり 立っていた。',lv:ncRB(5500),boss:true,foes:[['lxB',{hp:2.2,atk:1.3}]]}],{gem:8000,gemR:500,recruit:['lilithX'],ban:['lilithX']});
+Object.defineProperty(LXQ,'tier',{get:()=>(PROF.lxDesc||window.__lxRun)?13:-1,set:()=>{},configurable:true});
+{const _mc=menuCtx;menuCtx=function(){const r=_mc.apply(this,arguments);
+  if(!PROF.lxDesc&&PROF.recentQ&&PROF.recentQ.includes('lx2'))PROF.recentQ=PROF.recentQ.filter(x=>x!=='lx2');return r;};}
+{const _rq=runQuest;runQuest=async function(q){
+  if(q!==LXQ)return _rq.apply(this,arguments);
+  window.__lxRun=1;if(PROF.lxDesc){PROF.lxDesc=0;saveProf();}
+  try{return await _rq.apply(this,arguments);}finally{window.__lxRun=0;}};}
+{const _qr=questReward;questReward=async function(q,online,me){
+  const r=await _qr.apply(this,arguments);
+  if(q&&q.id==='lx1'){const owners=online?[...new Set(S.party.map(m=>m.o))]:[null];let hit=false;owners.forEach(()=>{if(rr()<LX.P)hit=true;});
+    if(hit&&!PROF.lxDesc){PROF.lxDesc=1;PROF.recentQ=['lx2'].concat((PROF.recentQ||[]).filter(x=>x!=='lx2')).slice(0,3);saveProf();
+      try{await LX.descend();}catch(e){}
+      await say('……空気が 凍りついた。\n夜が、止まった。\n\n【EXステージ 降臨】\n「失いしモノ リリス」\n（クエスト → 転生 に 出現。挑戦は 1回だけ。負けると 消える）',4200);hideMsg();}}
+  return r;};}
+TITLES.push(['lx1','闇夜の舞踏','【EXリリス】を クリア',()=>D_('lx1'),1]);
+TITLES.push(['lx2','空っぽの夜を越えて','EXステージ【失いしモノ リリス】を クリア',()=>D_('lx2'),1]);
 /* ===== ストーリーのセーブ強化：3スロット＋オートセーブ＋内容表示 ===== */
 const SVK=[SAVE,SAVE+'-2',SAVE+'-3'],AUTOK='hoshiakari-auto-v1';
 window.__loadKey=SAVE;
