@@ -8399,6 +8399,7 @@ const DBGHELP=`コマンド一覧（まず「debug」でデバッグモードON�
 debug / debug off … モード切替
 join <キャラ|all> … 加入クエスト限定の仲間（マナ・マリア・終焉れい・終焉まみゃ・終焉マグ等）を加入させる
 lv <キャラ|all> <Lv> … レベル設定（例: lv mag 500 / lv all 9999）
+   転生後は「1次5000」の形でも指定できる（例: lv all 2次3000）。数字なら Lv20000 なども可
 exp <キャラ|all> <数> … 経験値を足す
 gold <数> … 所持金を設定
 gem <数> … ジェムを設定 / item <id> <数> … ガチャ系アイテム追加
@@ -8423,7 +8424,7 @@ function dbgRun(line,out){
   if(!DBG){P('デバッグモードが OFF です。「debug」と入力してください。');return;}
   const num=(x,d)=>{const n=parseInt(x,10);return isNaN(n)?d:n;};
   try{
-  if(c==='lv'){const n=Math.max(1,Math.min(9999,num(a[2],0)));if(!a[1]||!a[2]){P('使い方: lv <キャラ|all> <Lv>');return;}
+  if(c==='lv'){const rbm=String(a[2]||'').match(/^(\d+)次(\d+)$/);const n=rbm?Math.max(1,Math.min(99990,9999*(+rbm[1])+(+rbm[2]))):Math.max(1,Math.min(99990,num(a[2],0)));if(!a[1]||!a[2]){P('使い方: lv <キャラ|all> <Lv>');return;}
     const ids=a[1]==='all'?PCHARS:[dbgNameToId(a[1])].filter(Boolean);if(!ids.length){P('キャラ不明');return;}
     ids.forEach(id=>{PROF.chars[id].lv=n;PROF.chars[id].exp=0;});saveProf();P(ids.map(i=>PNAME[i]).join('・')+' を Lv'+n+' にした');}
   else if(c==='exp'){const n=num(a[2],0);const ids=a[1]==='all'?PCHARS:[dbgNameToId(a[1])].filter(Boolean);if(!ids.length||!n){P('使い方: exp <キャラ|all> <数>');return;}
