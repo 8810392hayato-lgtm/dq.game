@@ -228,6 +228,7 @@ const $=id=>document.getElementById(id);
 const cv=$('cv'), g=cv.getContext('2d');
 const rr=()=>(window.ONL&&ONL.on)?ONL.rand():Math.random();
 const rnd=n=>Math.floor(rr()*n);
+const shufR=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(rr()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}return a;};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const SAVE='hoshiakari-save-v1';
 const lvcap=()=>(S&&S.flags&&S.flags.q)?(PROF.clear7?999900:profCap()):(S&&S.flags&&S.flags.ch>=7)?46:(S&&S.flags&&S.flags.ch>=6)?40:30;
@@ -1153,10 +1154,10 @@ async function bossAct(f){
   lines.push(`${f.n}の ${mv.n}！`);
   const mul=mv.m||1;B.curMv={n:mv.n,k:mv.k,m:mul};
   const dm=(m,k)=>{const d=hitParty(f,m,mul*(k||1));lines.push(`${pn(m)}は ${d}のダメージ！`);dead(m);return d;};
-  if(mv.k==='all'){tg.forEach(m=>dm(m));if(mv.freeze){tg.slice().sort(()=>rr()-.5).slice(0,mv.freeze).forEach(m=>{if(m.hp>0){m.bound=2;lines.push(`${pn(m)}は 凍りついた！`);}});}}
+  if(mv.k==='all'){tg.forEach(m=>dm(m));if(mv.freeze){shufR(tg.slice()).slice(0,mv.freeze).forEach(m=>{if(m.hp>0){m.bound=2;lines.push(`${pn(m)}は 凍りついた！`);}});}}
   else if(mv.k==='multi'){for(let i=0;i<(mv.n2||3);i++){const t=alivePty();if(!t.length)break;dm(t[rnd(t.length)]);}}
   else if(mv.k==='weak'){const m=tg.slice().sort((a,b)=>a.hp/stat(a,'hp')-b.hp/stat(b,'hp'))[0];dm(m);}
-  else if(mv.k==='bind'){tg.slice().sort(()=>rr()-.5).slice(0,mv.cnt||2).forEach(m=>{m.bound=2;lines.push(`${pn(m)}は 拘束された！`);});}
+  else if(mv.k==='bind'){shufR(tg.slice()).slice(0,mv.cnt||2).forEach(m=>{m.bound=2;lines.push(`${pn(m)}は 拘束された！`);});}
   else if(mv.k==='seal'){tg.forEach(m=>{dm(m);m.sealed=2;m.dot=2;});lines.push('魔法も 能力も 封じられた！ 継続ダメージも うけている！');}
   else if(mv.k==='summon'){if(mv.fn)await mv.fn(f,B,lines,dead);}
   else if(mv.k==='mirror'){const L=f.learnQ[rnd(f.learnQ.length)];const tgm=tg.find(x=>x.id===L.by&&x.hp>0)||tg[rnd(tg.length)];lines.push(`「${L.n}」を 学習して 打ち返した！`);const d=hitParty(f,tgm,Math.min(2.4,.5+L.p*.45));lines.push(`${pn(tgm)}は ${d}のダメージ！`);dead(tgm);}
@@ -6326,29 +6327,42 @@ window.ONL=(()=>{
   const O={on:false,k:0,actor:null,room:null,code:'',nm:'',chs:[],cown:null,qid:(()=>{try{return localStorage.getItem('dq-oq')||'';}catch(e){return '';}})(),t:Date.now()+Math.random(),goId:0,mvN:0};
   const NAMES={mag:'マグ',rei:'れい',mamya:'まみゃ',toki:'トキ',noa:'ノア',lutra:'ルトラ',lilith:'リリス'};
   const CHAPS=[['1','第1章',()=>startGame(false)],['2','第2章',()=>startCh2()],['3','第3章',()=>startCh3()],['4','第4章',()=>startCh4()],['6','第6章',()=>startCh6()],['7','第7章',()=>startCh7()]];
-  let rng=()=>0.5,RES=new Map(),WAIT=new Map(),myDec=[],myMv=[],mvQ=[],lastApply=0,unsub=null,ui=null,desync=false;
+  let rng=()=>0.5,RES=new Map(),WAIT=new Map(),myDec=[],myMv=[],myHk=[],mvQ=[],lastApply=0,unsub=null,ui=null,desync=false;
+  let hbN=0,hbSeen={},rngN=0,akN=0,PEND={},HS=new Map(),goneS={},ackSeen={},myPeer=null,hsBad=0,stallMsg=false;
   const mul=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
-  O.rand=()=>rng();
+  O.rand=()=>{rngN++;return rng();};
   const myTt=()=>{try{return PROF&&PROF.title||null;}catch(e){return null;}};
   const ttOf=p=>{try{const t=p&&p.tt&&TIT[p.tt];return t?'【'+t[1]+'】':'';}catch(e){return '';}};
   const peers=()=>{try{return O.room?O.room.peers().filter(p=>p.presence&&p.presence.nm):[];}catch(e){return[];}};
   const sorted=()=>peers().slice().sort((a,b)=>(a.presence.t-b.presence.t)||(a.peer<b.peer?-1:1));
-  O.me=()=>meId();O.isLeader=()=>{const l=sorted()[0];return !l||l.sameTab;};
+  O.me=()=>meId();O.isLeader=()=>{if(O.on&&O.lead)return effLead()===meId();const l=sorted()[0];return !l||l.sameTab;};
   const ownerOf=id=>{if(O.cown){const pr=O.cown[id];return peers().find(p=>p.peer===pr);}return peers().find(p=>(p.presence.chs||[]).includes(id));};
-  const meId=()=>{const p=peers().find(x=>x.sameTab);return p?p.peer:null;};
+  const meId=()=>{const p=peers().find(x=>x.sameTab);if(p)myPeer=p.peer;return myPeer;};
+  const isGone=id=>goneS[id]!==undefined&&Date.now()-goneS[id]>12000;
+  const effLead=()=>{if(!O.lead)return (sorted()[0]||{}).peer;if(!isGone(O.lead))return O.lead;const c=sorted().find(p=>!isGone(p.peer)&&(!O.roster||O.roster.includes(p.peer)));return c?c.peer:O.lead;};
   const quota=()=>{const n=Math.max(1,sorted().length);return n===1?[4]:n===2?[2,2]:n===3?[2,1,1]:[1,1,1,1];};
   const myQuota=()=>{const i=sorted().findIndex(p=>p.sameTab);return quota()[i]||1;};
   const lobMode=()=>{const l=sorted()[0];return (l&&l.presence.md)||'story';};
   const gA=g=>g?[g.n,gv(g,'atk'),gv(g,'def'),gv(g,'hp'),gv(g,'agi'),gv(g,'mag'),g.only||0,g.fx||0]:0;
   const unG=a=>a?{n:a[0],atk:a[1],def:a[2],hp:a[3],agi:a[4],mag:a[5],only:a[6]||undefined,fx:a[7]||undefined}:null;
   const pcData=()=>O.chs.map(id=>{const c=PROF.chars[id];return [id,c.lv,c.exp,gA(c.eq[0]),gA(c.eq[1]),(PROF.exsk&&PROF.exsk[id])?1:0];}).concat([['__it',{...(PROF.items||{})}]]);
-  O.decision=()=>{const k=O.k++;let mine;
-    if(O.actor){const o=ownerOf(O.actor);mine=o?o.sameTab:O.isLeader();}else mine=O.isLeader();
-    const who=O.actor?(NAMES[O.actor]||PNAME[O.actor]||O.actor):'みんな';const o=O.actor?ownerOf(O.actor):sorted()[0];
-    hud((mine?'▶ あなたの番':'… '+(o?ttOf(o.presence)+o.presence.nm:'リーダー')+' の入力待ち')+(O.actor?'（'+who+'）':''),mine);
+  const hashNow=()=>{try{if(typeof S==='undefined'||!S||S.mode!=='battle'||typeof B==='undefined'||!B||!B.foes)return undefined;let h=rngN|0;S.party.forEach(m=>{h=Math.imul(h^(m.hp|0),16777619)^((m.mp|0)+1);});B.foes.forEach(f=>{h=Math.imul(h^(f.hp|0),16777619);});return h>>>0;}catch(e){return undefined;}};
+  O.decision=()=>{const k=O.k++;let mine,ow=null;const me=meId();
+    if(O.actor){ow=O.cown?O.cown[O.actor]:null;if(!O.cown){const o0=ownerOf(O.actor);ow=o0?o0.peer:null;}
+      mine=ow?(ow===me||(isGone(ow)&&effLead()===me)):(effLead()===me||O.isLeader());}
+    else{ow=O.lead||((sorted()[0]||{}).peer)||null;mine=O.isLeader();}
+    const who=O.actor?(NAMES[O.actor]||PNAME[O.actor]||O.actor):'みんな';const o=ow?peers().find(p=>p.peer===ow):sorted()[0];
+    PEND[k]={ow,t:performance.now()};const hv=hashNow();if(hv!==undefined){HS.set(k,hv);myHk.push([k,hv]);if(myHk.length>16)myHk.shift();}
+    hud((mine?'▶ あなたの番':'… '+(o?ttOf(o.presence)+o.presence.nm:'相手')+' の入力待ち')+(O.actor?'（'+who+'）':''),mine);
     return {k,mine};};
   O.wait=k=>new Promise(res=>{if(RES.has(k))res(RES.get(k));else WAIT.set(k,res);});
-  const push=()=>{if(!O.room)return;const patch={dec:myDec.slice(-36),mv:myMv.slice(-36)};O.room.presence(patch).catch(()=>{});};
+  const ackNow=()=>{let a=akN;while(RES.has(a))a++;akN=a;return a;};
+  const push=()=>{if(!O.room)return;
+    let mk=Infinity,mm=Infinity;const ids=(O.roster||[]).filter(id=>id!==myPeer&&!isGone(id));
+    for(const id of ids){const a=ackSeen[id];mk=Math.min(mk,a?a.ak:0);mm=Math.min(mm,a?a.am:0);}
+    const win=(arr,from,cap)=>{const base=arr.slice(-36);if(from===Infinity)return base;const ext=arr.filter(e=>e[0]>=from-1);return (ext.length>base.length?ext:base).slice(-cap);};
+    const patch={dec:win(myDec,mk,160),mv:win(myMv,mm,160),ak:ackNow(),am:O.mvN,hk:myHk.slice(),hb:++hbN+Math.floor(Date.now()/1000)*1000};O.room.presence(patch).catch(()=>{});};
+  setInterval(()=>{try{if(O.on&&O.room)push();}catch(e){}},3000);
   O.send=(k,v)=>{RES.set(k,v);myDec.push([k,v]);push();};
   O.sendMv=(a,sn)=>{const c='up,down,left,right'.split(',').indexOf(a)+(sn?4:0);myMv.push([O.mvN++,c]);push();};
   O.sendAct=c=>{myMv.push([O.mvN++,10+c]);push();};
@@ -6378,14 +6392,28 @@ window.ONL=(()=>{
       if(pr.dec)for(const e of pr.dec){if(!RES.has(e[0])){RES.set(e[0],e[1]);const w=WAIT.get(e[0]);if(w){WAIT.delete(e[0]);w(e[1]);}}}}
     stampScan();
     if(!O.on){renderLobby();return;}
+    for(const p of peers()){if(p.sameTab)continue;const pr=p.presence;if(pr.ak!==undefined)ackSeen[p.peer]={ak:pr.ak,am:pr.am||0};
+      if(pr.hb!==undefined){const h0=hbSeen[p.peer];if(!h0||h0.v!==pr.hb)hbSeen[p.peer]={v:pr.hb,t:Date.now()};}
+      if(pr.hk)for(const e of pr.hk){const mh=HS.get(e[0]);if(mh!==undefined&&mh!==e[1]&&hsBad!==e[0]){hsBad=e[0];O.dbg='状態ズレ検知 k='+e[0]+' '+p.presence.nm;try{console.warn(O.dbg);}catch(x){}}}}
     for(let guard=0;guard<80;guard++){let f=null;
       for(const p of peers()){if(p.sameTab||!p.presence.mv)continue;f=p.presence.mv.find(e=>e[0]===O.mvN);if(f)break;}
       if(!f)break;mvQ.push(f[1]);O.mvN++;}
     // 同期ずれ検知
     let ahead=false;for(const p of peers()){if(p.sameTab||!p.presence.mv||!p.presence.mv.length)continue;if(p.presence.mv[0][0]>O.mvN)ahead=true;}
-    desync=ahead;if(ui)ui.warn.style.display=desync?'block':'none';
+    desync=ahead;if(ui){ui.warn.textContent=ahead?'同期ずれ':(hsBad?'状態ズレ?':(stallMsg?'通信待ち…':'同期ずれ'));ui.warn.style.display=(ahead||hsBad||stallMsg)?'block':'none';}
     renderLobby();
   }
+  setInterval(()=>{ // 離席・切断の検知と、入力待ちの詰まり解除
+    try{if(!O.on||!O.room)return;const now=Date.now(),ids=new Set(peers().map(p=>p.peer));
+      (O.roster||[]).forEach(id=>{const hs=hbSeen[id],dead=!ids.has(id)||(hs&&hs.v!==-1&&now-hs.t>15000);if(!dead)delete goneS[id];else if(goneS[id]===undefined)goneS[id]=now-3000;});
+      let stall=false;const pn=performance.now();
+      for(const ks of Object.keys(PEND)){const k=+ks,e=PEND[k];if(RES.has(k)){delete PEND[k];continue;}
+        const age=pn-e.t;if(age>20000)stall=true;
+        if(age>12000&&e.ow&&isGone(e.ow)&&effLead()===meId()){const w=WAIT.get(k);O.send(k,0);if(w){WAIT.delete(k);w(0);}toast('切断された人の入力を 自動で進めた');}}
+      stallMsg=stall;if(stall)push();
+      if(ui&&!desync&&!hsBad)ui.warn.style.display=stall?'block':'none',ui.warn.textContent='通信待ち…';
+    }catch(e){}
+  },1000);
   setInterval(()=>{ // ゲスト側：リーダーの移動を再現
     if(!O.on||!mvQ.length||!S)return;
     if(S.mode!=='map'||S.busy||S.h)return;
@@ -6395,7 +6423,8 @@ window.ONL=(()=>{
     S.sneak=c>=4;step(['up','down','left','right'][c%4]);
   },40);
   function beginGame(go){
-    O.goId=go.id;O.on=true;O.k=0;O.mvN=0;RES=new Map();WAIT=new Map();myDec=[];myMv=[];mvQ=[];rng=mul(go.seed);
+    O.goId=go.id;O.on=true;O.k=0;O.mvN=0;RES=new Map();WAIT=new Map();myDec=[];myMv=[];myHk=[];mvQ=[];rng=mul(go.seed);
+    rngN=0;akN=0;PEND={};HS=new Map();goneS={};ackSeen={};hbSeen={};hsBad=0;stallMsg=false;O.dbg='';meId();{const so=sorted();O.lead=so[0]?so[0].peer:null;O.roster=so.map(p=>p.peer);O.roster.forEach(id=>{hbSeen[id]={v:-1,t:Date.now()};});}
     if(O.room)O.room.presence({dec:[],mv:[]}).catch(()=>{});
     if(ui)ui.box.style.display='none';
     $('title').hidden=true;hud('開始！',false);
@@ -6404,7 +6433,7 @@ window.ONL=(()=>{
       setTimeout(async()=>{try{await runQuest(q,party,true,meId());}catch(e){}O.cown=null;O.finish();},100);return;}
     const c=CHAPS.find(x=>x[0]===go.chap);setTimeout(()=>(window.__onlTest||c[2])(),100);
   }
-  O.finish=()=>{O.on=false;mvQ=[];if(O.room)O.room.presence({go:null,dec:[],mv:[]}).catch(()=>{});
+  O.finish=()=>{O.on=false;O.lead=null;mvQ=[];PEND={};if(O.room)O.room.presence({go:null,dec:[],mv:[]}).catch(()=>{});
     if(ui)ui.hud.style.display='none';try{S=newState();}catch(e){}
     showTitle();O.open();};
   /* --- UI --- */
@@ -6498,7 +6527,7 @@ window.ONL=(()=>{
     <div class="row">モード：${lead?`<button class="ob ${!isS?'on':''}" id="o_ms">ストーリー</button><button class="ob ${isQ?'on':''}" id="o_mq">クエスト</button><button class="ob ${isP?'on':''}" id="o_mp">PvP対戦</button>`:(isP?'PvP対戦':isQ?'クエスト':'ストーリー')}</div>
     <div class="row">キャラ（${isS?'あなたの枠 '+qt+'人まで・育てたキャラで参加':'1人'}）：${(isS?OWN():Object.keys(NAMES)).map(id=>{const t=taken(id);const lv=isS?' Lv'+PROF.chars[id].lv:'';return `<button class="ob ${O.chs.includes(id)?'on':''}" data-c="${id}" ${t&&!O.chs.includes(id)?'disabled':''}>${NAMES[id]||PNAME[id]}${lv}${t&&!O.chs.includes(id)?'（'+t.presence.nm+'）':''}</button>`;}).join('')}</div>
     <div class="row pl">${ps.map((p,i)=>`${i===0?'★':'・'}${ttOf(p.presence)}${p.presence.nm}${p.sameTab?'（あなた）':''}：${(p.presence.chs||[]).map(x=>NAMES[x]||PNAME[x]).join('・')||'未選択'}${isS?'（枠'+(ql[i]||1)+'）':''}${isP&&ps.length%2===0?(i%2===0?'　[チームA]':'　[チームB]'):''}`).join('<br>')}</div>
-    <div class="row">${lead?(isP?`★PvP：<select id="o_cap"><option value="0" ${!pvcap?'selected':''}>Lv制限なし</option>${[50,100,300,1000,3000].map(n=>`<option value="${n}" ${pvcap===n?'selected':''}>Lv${n}に統一（上限）</option>`).join('')}</select> <button class="ob" id="o_go">対戦開始！</button>`:isQ?`★クエスト：<select id="o_q">${QUESTS.map(x=>`<option value="${x.id}" ${x.id===q.id?'selected':''}>【${TIERN[x.tier]}】${x.name}（推奨Lv${x.rec||x.lv}）</option>`).join('')}</select> <button class="ob" id="o_go">出発！</button>`
+    <div class="row">${lead?(isP?`★PvP：<select id="o_cap"><option value="0" ${!pvcap?'selected':''}>Lv制限なし</option>${[50,100,300,1000,3000].map(n=>`<option value="${n}" ${pvcap===n?'selected':''}>Lv${n}に統一（上限）</option>`).join('')}</select> <button class="ob" id="o_go">対戦開始！</button>`:isQ?`★クエスト：<select id="o_q">${QUESTS.filter(x=>x.tier>0).map(x=>`<option value="${x.id}" ${x.id===q.id?'selected':''}>【${TIERN[x.tier]}】${x.name}（推奨Lv${x.rec||x.lv}）</option>`).join('')}</select> <button class="ob" id="o_go">出発！</button>`
       :`★リーダー：<select id="o_ch">${CHAPS.map(c=>`<option value="${c[0]}" ${O.chap===c[0]?'selected':''}>${c[1]}から</option>`).join('')}</select> <button class="ob" id="o_go">ゲームスタート</button>`):'リーダーが開始するのを待っています…'}</div>
     <div class="row pl">${isP?'2人=2対2のキャラ戦（1人2キャラ）／ 4人=チーム戦（1人1キャラ、A:1・3番目 vs B:2・4番目）。3人では始められません。レベルと装備は各自の育てたものです。':isQ?'人数に応じて 2人=2:2 ／ 3人=2:1:1 ／ 4人=1:1:1:1 で操作。レベルと装備は各自の育てたものです（装備はタイトルの「クエスト・装備・育成」で変更）。':'移動はリーダー、戦闘コマンドは各自が自分のキャラを操作します。選ばれなかったキャラはリーダーが操作します。'}</div>
     <div class="row" style="color:#ec9a9a">${O.err||''}</div>
@@ -8848,8 +8877,8 @@ async function exAtk(f,name,kind,mult,o){
   else if(kind==='top'){dm(tg.slice().sort((a,b)=>stat(b,'atk')+stat(b,'mag')-stat(a,'atk')-stat(a,'mag'))[0]);}
   else if(kind==='target'&&o.t){if(o.t.hp>0)dm(o.t);}
   else dm(tg[rnd(tg.length)]);
-  if(o.bind){alivePty().slice().sort(()=>rr()-.5).slice(0,o.bind).forEach(x=>{x.bound=2;lines.push(`${pn(x)}は 拘束された！`);});}
-  if(o.seal){alivePty().slice().sort(()=>rr()-.5).slice(0,o.seal).forEach(x=>{x.sealed=2;lines.push(`${pn(x)}は スキルを 封じられた！`);});}
+  if(o.bind){shufR(alivePty().slice()).slice(0,o.bind).forEach(x=>{x.bound=2;lines.push(`${pn(x)}は 拘束された！`);});}
+  if(o.seal){shufR(alivePty().slice()).slice(0,o.seal).forEach(x=>{x.sealed=2;lines.push(`${pn(x)}は スキルを 封じられた！`);});}
   if(o.extra)lines.push(o.extra);
   updateParty();
   if(typeof playFoeFx==='function')await playFoeFx(f,kind==='all'?'all':kind==='multi'?'multi':'atk',B.hits);
@@ -9661,7 +9690,7 @@ FOES.wxAlf={...UB,n:'虚ろの剣聖',k:'knight',spr:'alfard',col:'#9ac8ff',capP
 /* ② 紅の死神：「紅の印」を 2人に 刻む。2ターン後、HP70%未満の者は 瀕死にされる */
 async function wxClrAI(f){
   if(B.round%3===1){
-    const c=alivePty().slice().sort(()=>rr()-.5).slice(0,2);c.forEach(m=>{m.wxMark=B.round+2;});
+    const c=shufR(alivePty().slice()).slice(0,2);c.forEach(m=>{m.wxMark=B.round+2;});
     if(typeof playTele==='function')await playTele(f);
     await say(`死神の鎌が ${c.map(pn).join('と ')}を なぞった……！\n【紅の印】2ターン後、印を持つ者が HP70%未満だと 瀕死になる！\n（それまでに 回復しておこう）`,2600);}
   await wxPick(f,[['見えない剣','weak',1.5,3],['紅の霊気弾','multi',.9,3,{n:3}],['霊線の雨','all',.9,3],['紅の爆発','all',1.3,2]]);}
@@ -11098,7 +11127,7 @@ async function melaAI(f){
   if(f.charge==='inferno'){f.charge=null;await exAtk(f,'終焉の業火','all',2.4);return;}
   if(B.round%4===0){f.charge='inferno';if(typeof playTele==='function')await playTele(f);
     await say('炎の神メラが 両腕を 天に 掲げた……！\n（次のターン 全体に 業火！ ぼうぎょ・シールドで 被害を 減らせ）',2400);return;}
-  if(B.round%3===1){const c=alivePty().slice().sort(()=>rr()-.5).slice(0,2);
+  if(B.round%3===1){const c=shufR(alivePty().slice()).slice(0,2);
     await exAtk(f,'灼熱の烙印','multi',.5,{n:2});c.forEach(m=>{if(m.hp>0)m.dot=3;});updateParty();
     await say(`${c.map(pn).join('と ')}に 炎の烙印が 刻まれた！\n（3ターンの間 毎ターン 最大HPの6%を 失う。状態異常回復で 消せる）`,2000);return;}
   await wxPick(f,[['火柱','one',1.4,3],['紅蓮の波','all',.8,3],['炎の雨','multi',.7,3,{n:4}]]);}
