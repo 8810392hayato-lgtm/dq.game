@@ -381,7 +381,7 @@ function drawSceneSpr(id,x,flip,horn){
   if(horn){g.fillStyle='#3f7fa6';g.fillRect(-22,-2,6,12);g.fillRect(16,-2,6,12);}
   g.restore();return true;}
 /* リリス：紅ノ支配を装備している時だけロングヘア */
-function sprKey(m){if(m.id==='netto'&&m.dett)return 'dett';if(m.id==='lilith'&&m.eq&&m.eq.some(e=>e&&e.uni&&/^紅ノ支配/.test(e.n)))return 'lilithL';if(m.id==='rei'&&m.ao>0)return 'reiA';return m.id;}
+function sprKey(m){if(m.id==='netto'&&m.dett)return 'dett';if(m.id==='lilith'&&m.eq&&m.eq.some(e=>e&&/^紅ノ支配/.test(e.n)))return 'lilithL';if(m.id==='rei'&&m.ao>0)return 'reiA';return m.id;}
 /* 顔アイコン（パーティ枠用）と、戦闘中の味方バストアップ */
 const FACEC={};
 function faceURL(key){if(FACEC[key]!==undefined)return FACEC[key];
@@ -14439,6 +14439,9 @@ async function mrAllyDomain(m){
   for(const m of (S.party||[]))if(m.id==='mara'&&m.shinPend&&m.hp>0&&!B.end)await mrAllyDomain(m);
   return r;};}
 DMGMODS.push((m,s,f,r)=>{if(mrAllyDom(m))r.d=Math.round(r.d*3);});
+/* 前の戦闘の神域が 次の戦闘に残る不具合の修正：戦闘開始時と終了時に 必ずリセット */
+ROUND_START.unshift(async b=>{if(b.round===1)for(const m of (S.party||[])){m.shinU=0;m.shinPend=false;}});
+{const _er=window.exReset;if(typeof _er==='function')window.exReset=function(){try{Object.values((S&&S.roster)||{}).forEach(m=>{m.shinU=0;m.shinPend=false;});}catch(e){}return _er.apply(this,arguments);};}
 {const _dc=window.DMGCAP;window.DMGCAP=function(m,s,f,r){if(mrPierce(m))return;return _dc(m,s,f,r);};}
 /* 液体化（物理無効）：当たった 位置が 水になって 貫通する */
 function mrLiq(f,m,h){f.liqT=performance.now();f.liqY=-24+rr()*40;f.liqN=(f.liqN||0)+1;const p=foePos(f);
@@ -14776,13 +14779,20 @@ LX.fall=()=>LG.play(8400,(ms,st)=>{
   if(ms>6200){g.save();g.globalAlpha=al*LG.s(ms,6200,8000)*.6;const sg=g.createLinearGradient(0,176,0,60);sg.addColorStop(0,'#ffb88a');sg.addColorStop(1,'rgba(255,184,138,0)');g.fillStyle=sg;g.fillRect(0,60,240,116);g.restore();
     LG.t('――夜が、明けた。',120,40,11,'#fff2e0',al*LG.s(ms,6800,7200),'#000',1);}});
 /* --- 降臨 --- */
-LX.descend=()=>LG.play(6200,(ms,st)=>{
+LX.descend=(kind)=>LG.play(6200,(ms,st)=>{const net=kind==='lx6';
   const al=1-LG.s(ms,5800,6200);LG.dark(al,'#000000');
   LX.crack(120,88,180,LG.e(LG.s(ms,300,1800)),al,'#e8e4ff',901,16);
   LG.at(st,'a',ms,300,()=>{LG.snd('shatter');shakeScreen();});
-  LX.port(120,90,1.7,al*LG.s(ms,1800,3000),{glow:'#8070b0',blur:14});
+  if(net&&typeof NV!=='undefined')NV.port(120,90,1.7,al*LG.s(ms,1800,3000),{glow:'#6a4a8a',blur:14});else LX.port(120,90,1.7,al*LG.s(ms,1800,3000),{glow:'#8070b0',blur:14});
   LG.stamp('降　臨',120,30,20,al*LG.s(ms,2600,2800),-.04,'#e8e4ff');LG.at(st,'b',ms,2600,()=>{LG.snd('boom');shakeScreen();});
-  LX.title('【失いしモノ リリス】','EXステージ ―― 挑戦は、一度きり',al*LG.s(ms,3200,3600),142);});
+  LX.title(net?'【虚無の魔王ネット】':kind==='lx4'?'【失いしモノ リリス・弐】':'【失いしモノ リリス】','EXステージ ―― 挑戦は、一度きり',al*LG.s(ms,3200,3600),142);});
+/* 降臨の 演出と 告知：スキップ中・オート周回中でも 必ず 見せる（オート周回は ここで 止める） */
+async function lxDescendShow(kind,msg){
+  const farm=!!window.__FARM,skip=!!window.__SKIP;
+  window.__FARM=false;if(window.skipSet)try{skipSet(false);}catch(e){}window.__SKIP=false;
+  const sm=S.mode,sb=B;
+  try{try{B={foes:[],floats:[],hits:[],end:null,round:0,bg:'black',opts:{}};S.mode='battle';await LX.descend(kind);}catch(e){}finally{S.mode=sm;B=sb;}await say(msg,4200);hideMsg();}
+  finally{if(farm&&typeof FM!=='undefined'){FM.stop=true;FM.why='EXステージが 降臨';window.__FARM=true;window.__SKIP=true;}else if(skip&&window.skipSet)try{skipSet(true);}catch(e){}}}
 
 
 /* --- 壊れていく 演出（3回目の 復活） --- */
@@ -14956,8 +14966,7 @@ Object.defineProperty(LXQ,'tier',{get:()=>(PROF.lxDesc||window.__lxRun)?13:-1,se
   const r=await _qr.apply(this,arguments);
   if(q&&q.id==='lx1'){const owners=online?[...new Set(S.party.map(m=>m.o))]:[null];let hit=false;owners.forEach(()=>{if(rr()<LX.P)hit=true;});
     if(hit&&!PROF.lxDesc){PROF.lxDesc=1;PROF.recentQ=['lx2'].concat((PROF.recentQ||[]).filter(x=>x!=='lx2')).slice(0,3);saveProf();
-      try{await LX.descend();}catch(e){}
-      await say('……空気が 凍りついた。\n夜が、止まった。\n\n【EXステージ 降臨】\n「失いしモノ リリス」\n（クエスト → 転生 に 出現。挑戦は 1回だけ。負けると 消える）',4200);hideMsg();}}
+      await lxDescendShow('lx2','……空気が 凍りついた。\n夜が、止まった。\n\n【EXステージ 降臨】\n「失いしモノ リリス」\n（クエスト → 転生 に 出現。挑戦は 1回だけ。負けると 消える）');}}
   return r;};}
 TITLES.push(['lx1','闇夜の舞踏','【EXリリス】を クリア',()=>D_('lx1'),1]);
 TITLES.push(['lx2','空っぽの夜を越えて','EXステージ【失いしモノ リリス】を クリア',()=>D_('lx2'),1]);
@@ -15094,10 +15103,10 @@ async function farmSummary(q,n,ok,a,b,why){
   hideMsg();
 }
 async function farmSolo(q,ids,N,_rq){
-  const a=farmSnap();let ok=0,n=0,why='指定回数を 達成';FM.stop=false;FM.online=false;farmUI(true);farmSet(true);
+  const a=farmSnap();let ok=0,n=0,why='指定回数を 達成';FM.stop=false;FM.why=null;FM.online=false;farmUI(true);farmSet(true);
   try{
     while(n<N){
-      if(FM.stop){why='手動で停止';break;}
+      if(FM.stop){why=FM.why||'手動で停止';break;}
       farmInfo(`${q.name}\n${n+1}/${N}回目　成功${ok}`);
       let r;try{r=await _rq(q,profParty(ids),false);}catch(e){why='エラーで停止';break;}
       n++;if(r&&r.ok)ok++;else{why='全滅・失敗で停止';break;}
@@ -15108,7 +15117,7 @@ async function farmSolo(q,ids,N,_rq){
 }
 /* オンライン：全員が同じ処理を 同時に回す。継続/停止はリーダーの決定に 全員が従う */
 window.farmOnline=async function(q,party,N,me){
-  const a=farmSnap();let ok=0,n=0,why='指定回数を 達成';FM.stop=false;FM.online=true;farmUI(true);farmSet(true);
+  const a=farmSnap();let ok=0,n=0,why='指定回数を 達成';FM.stop=false;FM.why=null;FM.online=true;farmUI(true);farmSet(true);
   const lead=()=>ONL.isLeader();
   const _rq=window.__rqBase||runQuest;
   try{
@@ -15121,7 +15130,7 @@ window.farmOnline=async function(q,party,N,me){
       if(n>=N)break;
       const d=ONL.decision();let v;
       if(d.mine){v=FM.stop?0:1;ONL.send(d.k,v);}else v=await ONL.wait(d.k);
-      if(!v){why='リーダーが 停止';break;}
+      if(!v){why=FM.why||'リーダーが 停止';break;}
       await sleep(30);
     }
   }finally{farmSet(false);}
@@ -15142,6 +15151,59 @@ window.farmOnline=async function(q,party,N,me){
     return {ok:true,farm:true};
   }finally{FM.on=false;}
 };}
+/* ===== オート戦闘AI強化：MP回復／履修(ノエリア・学習)・無冠の履修封じ 対策で技をばらけさせる ===== */
+{const _ac=autoCmd;autoCmd=function(m){
+  const c0=_ac(m);
+  try{return smartAuto(m,c0);}catch(e){return c0;}};}
+function smartAuto(m,c0){
+  if(!c0||!m||m.sealed>0||m.id==='maria')return c0;
+  const fs=live();if(!fs.length)return c0;
+  const mmp=stat(m,'mp'),sk=skillsOf(m),NONATK=['heal','shield','buff','revive','mpgive','cure'];
+  const atkSk=sk.filter(s=>!NONATK.includes(s.k)&&!s.hold&&!s.special);
+  const noItem=B.foes.some(f=>f.noItem&&!f.dead);
+  /* 今ラウンドの選択記録（同じ技を 2人が選ぶと 履修で 無効になる） */
+  if(!B.apk||B.apk.r!==B.round)B.apk={r:B.round,s:new Set()};
+  const claim=c=>{if(c&&c.t==='skill'&&c.s)B.apk.s.add(c.s.n);else if(c&&c.t==='atk')B.apk.s.add('こうげき');return c;};
+  /* 1) MP切れ：MP回復 */
+  const cheap=Math.min(...atkSk.map(s=>s.mp),Infinity);
+  const lowMp=m.hp>0&&!m.mpBreak&&(m.mp<mmp*.22||(isFinite(cheap)&&m.mp<cheap&&m.mp<mmp*.5));
+  if(lowMp&&c0.t!=='item'){
+    const miss=mmp-m.mp,idx=S.party.indexOf(m);
+    if(!noItem){
+      const opts=[['ether',30],['ether2',80],['qmp',Math.round(mmp*.4)],['qmp2',Math.round(mmp*.7)]].filter(o=>invCnt(m,o[0])>0);
+      /* 不足分を 無駄なく 埋められる最小のもの、無ければ最大 */
+      opts.sort((a,b)=>a[1]-b[1]);
+      const fit=opts.find(o=>o[1]>=miss*.8)||opts[opts.length-1];
+      if(fit&&idx>=0)return {t:'item',k:fit[0],tg:idx};
+      if(S.inv.elixir>0&&idx>=0&&m.mp<mmp*.1)return {t:'item',k:'elixir',tg:idx};}
+  }
+  /* 2) 履修・学習・無冠の履修封じ：封じられた技を 避ける */
+  const tf=fs.find(f=>!f.immune&&!f.passiveT)||fs[0];
+  const blocked=(s)=>{
+    const n=s.n,tgs=(s.t==='one')?[tf]:fs;
+    if(B.apk.s.has(n)&&tgs.some(f=>f.noelia||(f.awoken&&f.mukan&&!f.noRishu)))return true;
+    return tgs.some(f=>{
+      if(f.noelia&&B.round<=30&&f.seen&&f.seen.includes(n))return true;
+      if(f.learn&&s.t!=='all'&&f.lastMove===n&&f.lastBy===m.id)return true;
+      if(f.awoken&&f.mukan&&!f.noRishu&&n!=='こうげき'&&f.rishuM&&f.rishuM[n]!=null&&B.round<=f.rishuM[n])return true;
+      return false;});};
+  const restricted=fs.some(f=>f.noelia||f.learn||(f.mukan&&f.awoken&&!f.noRishu));
+  if(!restricted)return claim(c0);
+  const cur=c0.t==='atk'?{n:'こうげき',t:'one',k:'phys',p:1}:(c0.t==='skill'?c0.s:null);
+  if(!cur)return claim(c0);
+  if(!blocked(cur))return claim(c0);
+  /* 代わりの技：封じられておらず MPが足りる中で 最も威力の高いもの */
+  const multi=fs.length>1,sc=s=>(s.p||1)*(s.hits||1)*(s.t==='all'?fs.length:1);
+  const alt=atkSk.filter(s=>m.mp>=s.mp&&(multi||(s.t!=='all'&&s.t!=='rand'))&&!blocked(s)).sort((a,b)=>sc(b)-sc(a));
+  const tg=B.foes.indexOf(tf);
+  if(alt.length)return claim({t:'skill',s:alt[0],tg});
+  /* 通常攻撃（ノエリアは 通常攻撃も 1回だけ） */
+  if(!blocked({n:'こうげき',t:'one'}))return claim({t:'atk',tg});
+  /* 全部封じられている → 支援技や防御で 技を温存 */
+  const sup=sk.find(s=>(s.k==='buff'||s.k==='shield')&&m.mp>=s.mp&&!blocked(s)&&!m.buff);
+  if(sup)return claim({t:'skill',s:sup,tg:sup.t==='self'?-1:-1});
+  return claim(c0);
+}
 /* ===== 二次転生・三次転生クエスト／終焉チャレンジ（EXスキルⅡ・Ⅲ 解放） ===== */
 TIERN[14]='輪廻';TIERN[15]='涅槃';
 const R2=n=>19998+n,R3=n=>29997+n;
@@ -15319,9 +15381,8 @@ const LXQ3=lxHidden('lx6',15,'【虚無の魔王ネット】',7500,'EXステー�
     if(q&&(q.id==='lx3'||q.id==='lx5')){
       const id=q.id==='lx3'?'lx4':'lx6',owners=online?[...new Set(S.party.map(m=>m.o))]:[null];let hit=false;owners.forEach(()=>{if(rr()<LX.P)hit=true;});
       if(hit&&!PROF['dsc_'+id]){PROF['dsc_'+id]=1;PROF.recentQ=[id].concat((PROF.recentQ||[]).filter(x=>x!==id)).slice(0,3);saveProf();
-        try{await LX.descend();}catch(e){}
         const nm=id==='lx4'?'失いしモノ リリス・弐':'虚無の魔王ネット',tn=id==='lx4'?'輪廻':'涅槃';
-        await say(`……空気が 凍りついた。\n夜が、止まった。\n\n【EXステージ 降臨】\n「${nm}」\n（クエスト → ${tn} に 出現。挑戦は 1回だけ。負けると 消える）`,4200);hideMsg();}}
+        await lxDescendShow(id,`……空気が 凍りついた。\n${id==='lx6'?'世界から、色が 消えた。':'夜が、止まった。'}\n\n【EXステージ 降臨】\n「${nm}」\n（クエスト → ${tn} に 出現。挑戦は 1回だけ。負けると 消える）`);}}
     if(q&&q.id==='lx2')await emoGet(1,online);
     if(q&&q.id==='lx4')await emoGet(2,online);
     if(q&&q.id==='lx6')await emoGet(3,online);
