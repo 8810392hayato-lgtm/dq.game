@@ -17154,5 +17154,7 @@ ACT_POST.push(async(m,c)=>{
   if(!c||c.t!=='skill'||!c.s||!c.s.quad)return;
   const k=S.party.find(x=>x.id==='kakiume');if(!k||k.hp<=0)return;
   k.hp=0;updateParty();await say('カキウメは コジローに 殴り飛ばされた！\n（カキウメの HPが 0に なった……）',1800);});
+/* 四人連携技：ダメージ上限を 無視する */
+{const _dc=window.DMGCAP;window.DMGCAP=function(m,s,f,r){if(s&&s.quad&&!f.hitHP)return;return _dc(m,s,f,r);};}
 showTitle();requestAnimationFrame(frame);
 </script>
