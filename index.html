@@ -11289,7 +11289,12 @@ async function sklvMenu(){
       if(j===0){await sklvBulk([id],PNAME[id]+'の 技');continue;}
       const s=sk[j-1],L=PROF.sklv[id][s.n]||10;if(L>=20)continue;const cost=SKC[L-10];
       if(PROF.gems<cost){await say('ジェムが たりない。（'+cost+' 必要）');continue;}
-      if(!(await yesno(`${s.n}を Lv${L+1}に 強化？\n消費ジェム ${cost}\n威力 +${(L-9)*5}% → +${(L-8)*5}%`)))continue;
+      /* Lv20まで（ジェムが続くかぎり）の 合計 */
+      let tl=L,tc=0;while(tl<20&&tc+SKC[tl-10]<=PROF.gems){tc+=SKC[tl-10];tl++;}
+      const full=SKC.slice(L-10).reduce((a,v)=>a+v,0);
+      const m=await choose(`${s.n}　Lv${L}\nジェム ${PROF.gems}`,[{l:'1つ上げる',r:`Lv${L+1}　${cost}ジェム`},{l:tl>=20?'Lv20まで 一気に上げる':`上げられるところまで（Lv${tl}）`,r:`${tc}ジェム　威力 +${(tl-10)*5}%`+(tl<20?`（Lv20は ${full}）`:'')},{l:'やめる'}]);
+      if(m<0||m===2)continue;
+      if(m===1){PROF.gems-=tc;PROF.sklv[id][s.n]=tl;saveProf();await say(`${s.n}が Lv${L}→Lv${tl}に なった！\n消費ジェム ${tc}　残り ${PROF.gems}`,1000);continue;}
       PROF.gems-=cost;PROF.sklv[id][s.n]=L+1;saveProf();await say(`${s.n}が Lv${L+1}に なった！`,700);
     }
   }
