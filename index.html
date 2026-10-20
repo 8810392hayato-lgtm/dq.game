@@ -11436,10 +11436,12 @@ async function qEquipChar(id){
     if(j===2){const n=qAutoEquip(id);saveProf();await say(n?`${PNAME[id]}を 一番強い装備に 入れかえた！`:'すでに 一番強い 装備に なっている。',900);continue;}
     if(j===3){[0,1].forEach(s=>{if(c.eq[s]){PROF.inv.push(c.eq[s]);c.eq[s]=null;}});saveProf();continue;}
     const cur=c.eq[j],cs=qScore(cur,id);
-    const cand=PROF.inv.filter(g=>qCanEq(g,id,j)).sort((a,b)=>qScore(b,id)-qScore(a,id)).slice(0,80);
+    /* 専用武器（持ち主が この仲間）は レベル・ランクに関係なく 一番上に並べる */
+    const _all=PROF.inv.filter(g=>qCanEq(g,id,j)).sort((a,b)=>qScore(b,id)-qScore(a,id));
+    const own=_all.filter(g=>g.only===id),cand=own.concat(_all.filter(g=>g.only!==id).slice(0,80));
     if(!cand.length&&!cur){await say('装備できるものを 持っていない。',800);continue;}
-    const opts=[{l:'はずす',r:cur?gname(cur):''}].concat(cand.map(g=>({l:(qScore(g,id)>cs?'▲':'　')+qTag(g),r:qDiff(g,cur)})));
-    const k=await choose(`${j?'防具':'武器'}を えらぶ（強い順）\n右は いまの装備との差　▲＝いまより強い`,opts);if(k<0)continue;
+    const opts=[{l:'はずす',r:cur?gname(cur):''}].concat(cand.map(g=>({l:(g.only===id?'★専用 ':qScore(g,id)>cs?'▲':'　')+qTag(g),r:qDiff(g,cur)})));
+    const k=await choose(`${j?'防具':'武器'}を えらぶ（専用→強い順）\n右は いまの装備との差　▲＝いまより強い`,opts);if(k<0)continue;
     if(cur)PROF.inv.push(cur);c.eq[j]=null;
     if(k>0){const g=cand[k-1];PROF.inv.splice(PROF.inv.indexOf(g),1);c.eq[j]=g;}
     saveProf();
@@ -11461,7 +11463,9 @@ async function qPickAll(title,filter,withEq){
   if(withEq)for(const id of OWN()){const c=PROF.chars[id];c.eq.forEach(g=>{if(g&&filter(g))list.push({g,who:id});});}
   list.sort((a,b)=>(b.g.rk-a.g.rk)||((b.g.uni?1:0)-(a.g.uni?1:0))||((b.g.plus||0)-(a.g.plus||0)));
   /* 装備中を 先頭に */
-  list=list.filter(x=>x.who).concat(list.filter(x=>!x.who)).slice(0,90);
+  /* 装備中 → 専用武器（持ち主つき）→ そのほか。専用武器は 件数が多くても 切り捨てない */
+  { const eq=list.filter(x=>x.who),sp=list.filter(x=>!x.who&&(x.g.uni||x.g.only)),rest=list.filter(x=>!x.who&&!(x.g.uni||x.g.only));
+    list=eq.concat(sp).concat(rest.slice(0,Math.max(30,90-eq.length-sp.length))); }
   if(!list.length){await say('対象の装備が ない。');return null;}
   const k=await choose(title,list.map(x=>({l:(x.who?'【'+PNAME[x.who]+'】':'')+qTag(x.g),r:gearTxt(x.g)})));return k<0?null:list[k].g;}
 async function qEnhance(g){
@@ -16485,11 +16489,12 @@ const ACT={
 HR.ACT=ACT;HR.photoFlash=photoFlash;HR.ytPlay=ytPlay;
 
 /* --- ドア --- */
-async function useDoor(d){
+async function useDoor(d,bx,by){
+  const back=()=>{if(bx!==undefined){P.x=bx;P.y=by;}};
   if(d.to==='exit'){
-    if(!F.gate){SND_('cancel');await hsay('玄関の扉は 固く 閉ざされている。\n（出口の鍵が 必要だ）');return;}
+    if(!F.gate){back();SND_('cancel');await hsay('玄関の扉は 固く 閉ざされている。\n（出口の鍵が 必要だ）');return;}
     await win();return;}
-  if(d.lock&&!F[d.lock]){SND_('cancel');await hsay(d.lock==='silver'?'書斎の扉だ。鍵が かかっている。\n（銀色の鍵穴だ）':'重い扉だ。鍵が かかっている。\n（地下室の鍵が 必要だ）');return;}
+  if(d.lock&&!F[d.lock]){back();SND_('cancel');await hsay(d.lock==='silver'?'書斎の扉だ。鍵が かかっている。\n（銀色の鍵穴だ）':'重い扉だ。鍵が かかっている。\n（地下室の鍵が 必要だ）');return;}
   changeRoom(d);}
 function changeRoom(d){
   const old=P.room;
@@ -16629,11 +16634,12 @@ function update(dt){
   P.moving=!!(vx||vy);if(P.moving)P.walkT+=dt*(dash?12:8);
   const slide=(axis,n)=>{ /* 角・ドア口に引っかかったら、ずらして通す */
     for(let o=1;o<=6;o++)for(const s of [-1,1]){const t=axis==='x'?[n,P.y+s*o]:[P.x+s*o,n];if(!boxSolid(R,t[0],t[1])){const mv=Math.min(o,sp2*dt*.9);if(axis==='x')P.y+=s*mv;else P.x+=s*mv;return;}}};
+  const ox0=P.x,oy0=P.y;
   if(vx){const nx=P.x+vx*sp2*dt;if(!boxSolid(R,nx,P.y))P.x=nx;else slide('x',nx);}
   if(vy){const ny=P.y+vy*sp2*dt;if(!boxSolid(R,P.x,ny))P.y=ny;else slide('y',ny);}
-  /* ドアに乗ったか */
+  /* ドアに乗ったか（乗る直前の位置を 覚えておく） */
   const cxp=Math.floor((P.x+8)/TS),cyp=Math.floor((P.y+12)/TS);
-  for(const d of R.doors){if(d.x===cxp&&d.y===cyp){useDoor(d);break;}}
+  for(const d of R.doors){if(d.x===cxp&&d.y===cyp){useDoor(d,ox0,oy0);break;}}
   monUpdate(dt);
 }
 
