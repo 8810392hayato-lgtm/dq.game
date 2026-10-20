@@ -11040,7 +11040,7 @@ async function mukanTimeUp(f){
   await say('無冠ノ役者「……だが、君たちは 最後まで 舞台に 立っていた」',2200);
   await say('無冠ノ役者「冠を 渡すには、まだ 早い。\n　——けれど、認めよう。君たちは もう、伝説の 一部だ」',2800);
   await say('称号【伝説に認められしモノ】を 手に入れた。\n（この戦いは 敗北扱いとなる）',2600);}
-FOES.qmukan={...UB,n:'無冠ノ役者',k:'knight',spr:'mukan',col:'#8a4ae0',mukan:true,immortal:true,learn:true,noItem:true,regen:.08,pctDmg:.12,
+FOES.qmukan={...UB,n:'無冠ノ役者',k:'knight',spr:'mukan',col:'#8a4ae0',mukan:true,immortal:true,learn:true,noItem:true,regen:.08,pctDmg:.17,
   ai:mukanAI,enrageFn:mukanTimeUp,openFx:()=>LG.open(),deathMsg:'無冠ノ役者「……見事だ。この冠は、君たちのものだ」'};
 
 ROUND_START.push(async b=>{
@@ -11114,7 +11114,7 @@ ROUND_END.push(async b=>{
 /* ---------- クエスト ---------- */
 exQuest({id:'leg1',name:'【伝説への挑戦】',tier:10,lv:9999,rec:99999,alias:'fort',bg:'hell',leg:true,
   desc:'冠を持たぬ 役者が、ただ ひとり 舞台に 立っている。\n報酬は 称号だけ。それでも 挑むなら——。\n（最初から ボス戦。時間切れまで 耐えても 称号が 得られる）',
-  waves:[{say:'幕が 上がる。\n舞台の 中央に、銀の髪の 役者が 立っていた。\n左右で 色の違う 瞳が、静かに こちらを 見ている。',lv:9999,boss:true,foes:[['qmukan',{hp:10,atk:2.1}]]}]});
+  waves:[{say:'幕が 上がる。\n舞台の 中央に、銀の髪の 役者が 立っていた。\n左右で 色の違う 瞳が、静かに こちらを 見ている。',lv:9999,boss:true,foes:[['qmukan',{hp:13,atk:3.6}]]}]});
 {const _rq=runQuest;runQuest=async function(q,party,online,me){
   if(!q.leg)return _rq.apply(this,arguments);
   QR.q=q;QR.failed=false;QR.mb=0;QR.mfl=0;questState(party);
@@ -11129,6 +11129,34 @@ exQuest({id:'leg1',name:'【伝説への挑戦】',tier:10,lv:9999,rec:99999,ali
   await say(L.join('\n'),3000);hideMsg();return {ok:true,res:L};};}
 TITLES.push(['leg1','伝説を超えし者','滅級【伝説への挑戦】を クリア',()=>D_('leg1'),1],
   ['legto','伝説に認められしモノ','滅級【伝説への挑戦】で 時間切れまで 戦い抜く',()=>PROF.legTO|0,1]);
+
+/* ===== 味方の神域は 無冠ノ役者に 消される：スキップ不可の暗転演出 ===== */
+function legErase(name){return new Promise(res=>{
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;opacity:0;transition:opacity .7s;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none;text-align:center;font-weight:900;color:#f0e4ff';
+  const stop=e=>{e.stopPropagation();e.preventDefault();};
+  ['click','touchstart','touchend','pointerdown','keydown','keyup'].forEach(t=>el.addEventListener(t,stop,true));
+  const kb=e=>{e.stopPropagation();e.preventDefault();};window.addEventListener('keydown',kb,true);
+  const a=document.createElement('div');a.style.cssText='font-size:6vw;letter-spacing:.3em;opacity:0;transition:opacity .8s;text-shadow:0 0 14px #c0204a';
+  const b=document.createElement('div');b.style.cssText='font-size:11vw;margin-top:3vw;opacity:0;transition:opacity .5s,letter-spacing 1.6s;letter-spacing:.05em;text-shadow:0 0 18px #fff,0 0 40px #c0204a';
+  const c=document.createElement('div');c.style.cssText='height:2px;width:0;background:#fff;margin-top:4vw;box-shadow:0 0 12px #fff;transition:width 1s';
+  a.textContent='無冠ノ役者「——それは、台本に ない」';b.textContent='神域 抹消';
+  el.append(a,c,b);document.body.appendChild(el);
+  try{SND.play('shatter',1);}catch(e){}
+  requestAnimationFrame(()=>{el.style.opacity='1';});
+  setTimeout(()=>{a.style.opacity='1';},800);
+  setTimeout(()=>{c.style.width='70vw';},1700);
+  setTimeout(()=>{b.style.opacity='1';b.style.letterSpacing='.3em';try{SND.play('crit',1);}catch(e){}},2500);
+  setTimeout(()=>{el.style.transition='opacity .9s';el.style.opacity='0';},4600);
+  setTimeout(()=>{window.removeEventListener('keydown',kb,true);el.remove();res();},5500);});}
+{const _ad=mrAllyDomain;mrAllyDomain=async function(m){
+  if(legOn()&&!mrDomFoe()){
+    m.shinPend=false;B.mrAc={};
+    await say(`${pn(m)}「……神域、展開——！」`,1300);
+    await legErase();
+    m.shinU=0;m.invUntil=0;updateParty();
+    await say(`無冠ノ役者「神域は 僕の 専売だ。\n　君の 舞台は、ここには 要らない」\n（${pn(m)}の 神域は 消された！）`,2800);return;}
+  return _ad.apply(this,arguments);};}
 /* ===== 極限・封：無冠ノ役者の ギミックを 封じる 8つの試練 =====
    クリアするたび【伝説への挑戦】の ギミックを 1つ OFFにできる（挑戦前に ON/OFF 切り替え）。 */
 TIERN[11]='極限・封';TMUL[11]=16;GMUL[11]=1500;
@@ -15409,7 +15437,7 @@ const NR2={
   C:[['u4a','【挑戦】虚空の竜帝',1500,'1撃の上限 最大HPの0.12%／28ターンで 時間切れ。毎ターン 再生する。','虚空が 裂け、竜が 降りてきた。',[['qx4a','虚空の竜帝','dragon','#3a2a8a',['虚空の爪','帝の咆哮','ヴォイド・エンペラー'],'power',{regen:.07,capPct:.0012,enrage:28,pctDmg:.22},7.0,2.4]]],
      ['u4b','【挑戦】鏡の四騎士',3000,'同じ人が 同じ技を 続けると 反撃される 四人の 騎士。','四つの 剣が 同じ 軌道を 描いた。',[0,1,2,3].map(()=>['qx4b','鏡の騎士','knight','#d0d0e8',['鏡刃','反射の連撃','ミラー・カルテット'],'fast',{learn:true,capPct:.003,pctDmg:.1},1.9,2.2])],
      ['u4c','【挑戦】刻の断罪者',4600,'12ターンで 時間切れ。割合ダメージの 猛攻。（超短期決戦）','時計の針が 逆回りを 始めた。',[['qx4c','刻の断罪者','hole','#e0c060',['断罪の針','加速する審判','クロノ・ギロチン'],'mage',{enrage:12,pctDmg:.4},4.2,2.3]]]],
-  F:['e4','【終焉・四】虚空の最奥',7000,'四次転生の 終点。\n三つの 挑戦を 越えた 者だけが 辿り着く。','最奥で 「何か」が 目を 開けた。','虚空の主','dragon','#120a2a',['主の爪','虚空の咆哮','ヴォイド・エンド'],'power',{noelia:true,learn:true,regen:.05,thorn:.04,capPct:.0015,enrage:32,pctDmg:.32},8.2,2.9]},
+  F:['e4r','【終焉・四】虚空の最奥',7000,'四次転生の 終点。\n三つの 挑戦を 越えた 者だけが 辿り着く。','最奥で 「何か」が 目を 開けた。','虚空の主','dragon','#120a2a',['主の爪','虚空の咆哮','ヴォイド・エンド'],'power',{noelia:true,learn:true,regen:.05,thorn:.04,capPct:.0015,enrage:32,pctDmg:.32},8.2,2.9]},
  17:{r:5,gem:7200,a0:1.8,
   N:[['t5a','【永劫の砂時計】',300,'cave','落ちきらない 砂が 永遠に 時を 刻む。','q5a','砂の中から 番人が 立ち上がる。','砂時計の番人','wither','#e0c870',['永劫の砂','巻き戻る刻','エタニティ・サンド'],'mage'],
      ['t5b','【星々の墓標】',1100,'cave','死んだ 星々が 墓標のように 並ぶ。','q5b','星の 欠片が 巨人を かたどった。','墓標の巨人','guardian','#8a8ab0',['墓標の拳','星屑の崩落','スター・グレイブ'],'power'],
@@ -16944,5 +16972,187 @@ ACT_POST.push(async(m,c)=>{
   if(out.length)await say(out.join('\n'),1500);
   if(m.hp>0){const h=Math.round(stat(m,'hp')*.5);m.hp=Math.min(stat(m,'hp'),m.hp+h);updateParty();
     await say(`カキウメは 満足そうだ。\nHPが ${h}回復した！（味方への被害も 気にしない、なり）`,1500);}});
+/* ===== 四人連携技【絆ノ四重奏】マグ＋げらりん＋コジロー＋カキウメ：スキップ不可の長尺演出 ===== */
+const QUAD_IDS=['mag','gerarin','kojiro','kakiume'],QUAD_N='絆ノ四重奏・これが俺たちの絆なりね';
+window.__regQUAD=()=>QUAD_IDS.forEach(id=>{if(!HERO[id]||HERO[id].sk.some(s=>s.n===QUAD_N))return;const o=QUAD_IDS.filter(x=>x!==id);
+  HERO[id].sk.push({n:QUAD_N,lv:1,mp:40,t:'one',k:'phys',p:17,pierce:true,req:'q',special:'combo',combo:o[0],comboAll:o,with:o[0],withAll:o,quad:true});});
+window.__regQUAD();
+function quadScene(){return new Promise(res=>{
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none';
+  const stop=e=>{e.stopPropagation();e.preventDefault();};
+  ['click','touchstart','touchend','pointerdown','keydown','keyup'].forEach(t=>el.addEventListener(t,stop,true));
+  const kb=e=>{e.stopPropagation();e.preventDefault();};window.addEventListener('keydown',kb,true);
+  const cv=document.createElement('canvas');cv.width=640;cv.height=360;
+  cv.style.cssText='width:min(100vw,177.78vh);height:auto;aspect-ratio:16/9;image-rendering:pixelated;background:#000';
+  el.appendChild(cv);document.body.appendChild(el);
+  const g=cv.getContext('2d');g.imageSmoothingEnabled=false;
+  const SP={};['mag','gerarin','kojiro','kakiume'].forEach(i=>{try{SP[i]=sprCanvas(i,'q4',null,32,48);}catch(e){}});
+  const W=320,H=180,GY=142,DUR=22400,fired={};
+  const cl=v=>Math.max(0,Math.min(1,v)),seg=(t,a,b)=>cl((t-a)/(b-a)),eo=u=>1-(1-u)*(1-u),ei=u=>u*u,lerp=(a,b,u)=>a+(b-a)*u;
+  const rnd=i=>{const s=Math.sin(i*12.9898+78.233)*43758.5453;return s-Math.floor(s);};
+  const snd=n=>{try{SND.play(n,1);}catch(e){}};
+  const ev=(k,t,a,fn)=>{if(t>=a&&!fired[k]){fired[k]=1;fn();}};
+  function ch(id,x,y,o){o=o||{};const s=SP[id];if(!s)return;const sc=o.s||1.5;
+    g.save();g.translate(x,y);if(o.rot)g.rotate(o.rot);g.scale((o.flip?-1:1)*sc*(o.sx||1),sc*(o.sy||1));g.globalAlpha=o.a==null?1:o.a;
+    if(o.glow){g.shadowColor=o.glow;g.shadowBlur=14;}
+    g.drawImage(s,-16,-48);g.restore();}
+  function T(s,x,y,sz,col,a,sk){if(a<=0)return;g.save();g.globalAlpha=cl(a);g.font='900 '+sz+'px sans-serif';g.textAlign='center';g.textBaseline='middle';
+    g.lineWidth=Math.max(2,sz/6);g.strokeStyle=sk||'#000';g.lineJoin='round';g.strokeText(s,x,y);g.fillStyle=col;g.fillText(s,x,y);g.restore();}
+  function star(x,y,r,col,a){g.save();g.globalAlpha=cl(a);g.fillStyle=col;g.beginPath();for(let i=0;i<16;i++){const R=i%2?r*.4:r,an=i/16*6.283;g.lineTo(x+Math.cos(an)*R,y+Math.sin(an)*R);}g.fill();g.restore();}
+  function line(x1,y1,x2,y2,w,col,a){g.save();g.globalAlpha=cl(a);g.strokeStyle=col;g.lineWidth=w;g.lineCap='round';g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.restore();}
+  const EX=262;let eHit=0,eHP=1,eAlpha=1;
+  function enemy(t){if(eAlpha<=0)return;const sh=eHit>0?(rnd(t|0)-.5)*5:0;g.save();g.globalAlpha=eAlpha;g.translate(EX+sh,GY);
+    g.fillStyle=eHit>0?'#f0d0ff':'#1a0e2a';g.beginPath();g.ellipse(0,-42,26,44,0,0,6.283);g.fill();
+    g.fillStyle=eHit>0?'#c090e0':'#2c1a44';g.beginPath();g.moveTo(-20,-76);g.lineTo(-30,-102);g.lineTo(-8,-82);g.fill();g.beginPath();g.moveTo(20,-76);g.lineTo(30,-102);g.lineTo(8,-82);g.fill();
+    g.fillStyle='#ff2a48';g.shadowColor='#ff2a48';g.shadowBlur=8;g.fillRect(-14,-62,9,4);g.fillRect(5,-62,9,4);g.restore();}
+  function hp(t,v,lbl){g.save();g.fillStyle='rgba(0,0,0,.65)';g.fillRect(10,10,110,16);g.fillStyle='#333';g.fillRect(14,19,102,5);
+    g.fillStyle=v>.3?'#4ae07a':'#ff3a3a';g.fillRect(14,19,102*cl(v),5);g.restore();T(lbl,66,14,8,'#fff',1);}
+  function bg(t,dark){const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#0a0820');gr.addColorStop(1,'#241040');g.fillStyle=gr;g.fillRect(0,0,W,H);
+    for(let i=0;i<30;i++){g.fillStyle='rgba(255,255,255,'+(.2+.3*rnd(i))+')';g.fillRect(rnd(i+9)*W,rnd(i+3)*80,1,1);}
+    g.fillStyle='#120a22';g.fillRect(0,GY,W,H-GY);g.fillStyle='#3a2060';g.fillRect(0,GY,W,1);
+    if(dark){g.fillStyle='rgba(0,0,0,'+dark+')';g.fillRect(0,0,W,H);}}
+  function flash(a,col){if(a<=0)return;g.save();g.globalAlpha=cl(a);g.fillStyle=col||'#fff';g.fillRect(0,0,W,H);g.restore();}
+  const HOME={mag:60,gerarin:95,kojiro:130,kakiume:165};
+  let t0=performance.now(),last=0;
+  function frame(){
+    const t=performance.now()-t0;
+    if(t>=DUR){window.removeEventListener('keydown',kb,true);el.remove();res();return;}
+    g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,W,H);
+    let cx=W/2,cy=H/2,z=1,shk=0;
+    /* ---- カメラ ---- */
+    if(t>=5900&&t<8300){z=t<6700?1+2*eo(seg(t,5900,6700)):t<7700?3:3-2*eo(seg(t,7700,8300));cx=235;cy=122;}
+    if(z>1){g.translate(W/2,H/2);g.scale(z,z);g.translate(-cx,-cy);}
+    /* 画面揺れ */
+    if(t>3400&&t<5900&&((t-3500)%380)<160)shk=3;
+    if(t>8300&&t<14500)shk=1.5;
+    if(t>20300&&t<20700)shk=5;
+    if(shk)g.translate((rnd(t|0)-.5)*shk*2,(rnd((t|0)+7)-.5)*shk*2);
+    const dark=(t>14500&&t<17000)?.6*Math.min(1,seg(t,14500,15200)):(t>=17000&&t<17800?.6*(1-seg(t,17000,17800)):0);
+    bg(t,dark);
+    eHit=0;
+    /* ---- 敵の登場 ---- */
+    const eIn=eo(seg(t,300,1600));
+    /* ---- A：集結 ---- */
+    const ap=eo(seg(t,0,1400));
+    const pos={};let kkRot=0,kkY=0,kkSx=1,kkSy=1,kkA=1,kkFlip=false,kkGlow=null;
+    pos.mag={x:lerp(-80,HOME.mag,ap),y:GY};pos.gerarin={x:lerp(-110,HOME.gerarin,ap),y:GY};pos.kojiro={x:lerp(-140,HOME.kojiro,ap),y:GY};
+    let kx=lerp(-170,HOME.kakiume,ap);
+    /* ---- B：突進→転ぶ ---- */
+    if(t>=2000&&t<3000){const u=ei(seg(t,2000,3000));kx=lerp(HOME.kakiume,228,u);kkY=-Math.abs(Math.sin(t/55))*5;}
+    if(t>=3000){kx=228+7*eo(seg(t,3000,3400));kkRot=1.5708*eo(seg(t,3000,3250));kkY=-6*Math.sin(Math.PI*seg(t,3000,3250));}
+    /* ---- C：踏みつけ ---- */
+    let kHP=1;
+    if(t>=3400){const n=Math.min(6,Math.floor((t-3500)/380)+1);kHP=Math.max(.01,1-(t<3500?0:n/6)*0.99);if(t>=5780)kHP=.01;}
+    if(t>=3000&&t<7000){kkSy=1;}
+    const homeFor=id=>pos[id]?pos[id].x:HOME[id];
+    if(t>=3000&&t<3500){['mag','gerarin','kojiro'].forEach((id,i)=>{pos[id].x=lerp(HOME[id],150+i*22,eo(seg(t,3000,3400)));});}
+    if(t>=3500&&t<5900){
+      ['mag','gerarin','kojiro'].forEach((id,i)=>{pos[id].x=150+i*22;});
+      const k=Math.floor((t-3500)/380);
+      if(k<6){const u=((t-3500)%380)/380,who=['mag','gerarin','kojiro'][k%3],i=k%3,sx0=150+i*22;
+        pos[who]={x:lerp(sx0,236,eo(u)),y:GY-62*Math.sin(Math.PI*u)};
+        if(u>.88){kkSy=.45;kkSx=1.15;}
+        ev('st'+k,t,3500+k*380+330,()=>{snd(k%2?'crit':'warn');});}
+      if(t>5440&&t<5780){kkSy=.45;kkSx=1.15;}}
+    /* ---- D：覚醒 ---- */
+    let awake=0;
+    if(t>=7000){const u=eo(seg(t,7000,7500));kkRot=1.5708*(1-u);kkY=-8*Math.sin(Math.PI*u);awake=1;kkGlow='#ffd84a';kHP=.01;}
+    ev('aw',t,6950,()=>{snd('chime');snd('crit');});
+    /* ---- E以降：位置 ---- */
+    if(t>=8300){kx=HOME.kakiume-70+0;}
+    let showAll=true;
+    if(t>=8300&&t<11000){
+      const w=Math.sin(t/70);pos.mag={x:208+w*10,y:GY-Math.abs(Math.sin(t/90))*8};pos.gerarin={x:222+Math.sin(t/60)*8,y:GY-Math.abs(Math.sin(t/110))*10};pos.kojiro={x:196+Math.sin(t/50)*12,y:GY};
+      kx=232+Math.sin(t/65)*8;kkY=-Math.abs(Math.sin(t/80))*9;}
+    if(t>=11000&&t<14500){
+      pos.mag={x:70,y:GY};pos.gerarin={x:100,y:GY};kx=130;}
+    if(t>=14500&&t<17000){pos.mag={x:60,y:GY};pos.kojiro={x:85,y:GY};kx=110;}
+    if(t>=17000){pos.mag={x:150,y:GY};pos.kojiro={x:200,y:GY};kx=170;}
+    /* ---- 描画：敵 ---- */
+    if(t>=8300&&t<17000){/* 被弾フラッシュ */ eHit=(Math.floor(t/60)%2)?1:0;}
+    if(t>=17000&&t<17300)eHit=1;
+    if(t>=17000)eAlpha=1-seg(t,17200,18400);
+    g.save();if(t<300)g.globalAlpha=0;else g.globalAlpha=eIn;enemy(t);g.restore();
+    if(t<=17300&&t>16900){/* 巨大斬撃跡 */g.save();const u=seg(t,16900,17000);line(EX-90,GY-130,EX+60,GY+10,10*(1-seg(t,17000,17300)),'#fff',1);line(EX-90,GY-130,EX+60,GY+10,22*(1-seg(t,17000,17300)),'#6ad0ff',.5*(1-seg(t,17000,17300)));g.restore();}
+    /* ---- E：カキウメの大群（背景側） ---- */
+    if(t>=8500&&t<11400){for(let i=0;i<46;i++){const st=8500+i*55,u=seg(t,st,st+780);if(u<=0||u>=1)continue;
+      const yy=GY-rnd(i+40)*24;ch('kakiume',lerp(-20,EX-22,u),yy+(-Math.abs(Math.sin(t/60+i))*5),{s:.8+rnd(i)*.4});
+      if(u>.93)star(EX-24,yy-14,8,'#ffe070',1);}}
+    /* ---- 味方描画 ---- */
+    const vis=id=>{if(t>=11000&&t<14500)return id==='kojiro'||id==='mag'?false:true;if(t>=14500&&t<17000)return id==='gerarin'?false:true;return true;};
+    const drawAll=()=>{['mag','gerarin','kojiro'].forEach(id=>{if(!vis(id))return;if(id==='kojiro'&&t>=20000)return;ch(id,pos[id].x,pos[id].y);});
+      if(vis('kakiume')&&t<17800)ch('kakiume',kx-34*(kkRot/1.5708),GY+kkY,{rot:kkRot,sx:kkSx,sy:kkSy,glow:kkGlow,s:awake?1.7:1.5});};
+    if(t<11000||t>=14500)drawAll();
+    if(t>=11000&&t<14500){ch('gerarin',100,GY);ch('kakiume',130,GY,{glow:'#ffd84a'});ch('gerarin',100,GY,{a:0});}
+    /* ---- F：コジロー乱打＆マグ交代 ---- */
+    if(t>=11000&&t<14500){
+      const solo=t<12400;let who='kojiro';
+      if(!solo){const k=Math.floor((t-12400)/350);who=k%2?'mag':'kojiro';ev('sw'+k,t,12400+k*350,()=>{snd('warn');});}
+      const fx0=EX-44+Math.sin(t/25)*6,fy0=GY;ch(who,fx0,fy0,{glow:who==='mag'?'#ff2a48':'#8ad0ff'});
+      for(let i=1;i<=3;i++)ch(who,fx0-i*10,fy0,{a:.28/i});
+      const hz=solo?36:46;for(let i=0;i<(solo?7:5);i++){const q=Math.floor(t/hz)*7+i,ang=rnd(q)*3.14-1.57;const yy=GY-14-rnd(q+5)*70;
+        line(EX-34,yy+14,EX+34,yy-14+rnd(q+2)*10,2.2,who==='mag'?'#ff4060':'#bff0ff',.9);
+        if(rnd(q+3)>.6)star(EX-22+rnd(q+1)*40,yy,5+rnd(q)*5,'#fff',.9);}
+      eHit=1;
+      const hits=Math.floor((t-11000)/38);T(hits+' HIT',60,34,16,'#ffe070',seg(t,11000,11200));
+      T(solo?'超高速乱打':'交代！',W/2,60,solo?22:20,who==='mag'?'#ff6a80':'#9ae0ff',1);
+      ev('kj',t,11000,()=>{snd('crit');});}
+    /* ---- G：限界突破 ---- */
+    if(t>=14500&&t<17400){
+      let gx=150;if(t>=16750)gx=lerp(150,300,ei(seg(t,16750,16950)));
+      if(t>=16950&&t<17400)gx=300;
+      const ch1=seg(t,14700,16700);
+      for(let i=0;i<40;i++){const an=rnd(i)*6.283,r=lerp(110+rnd(i+1)*60,6,(ch1*3+rnd(i+2))%1);
+        star(150+Math.cos(an)*r,GY-30+Math.sin(an)*r*.6,2+rnd(i+4)*3,i%2?'#6ad0ff':'#fff',ch1>0&&t<16750?.9:0);}
+      g.save();g.globalAlpha=ch1*.5;const rg=g.createRadialGradient(150,GY-30,2,150,GY-30,20+ch1*70);rg.addColorStop(0,'#fff');rg.addColorStop(.4,'#6ad0ff');rg.addColorStop(1,'rgba(106,208,255,0)');g.fillStyle=rg;g.fillRect(0,0,W,H);g.restore();
+      if(t>=16750&&t<16950){for(let i=1;i<6;i++)ch('gerarin',gx-i*18,GY,{a:.4-.07*i,glow:'#6ad0ff'});}
+      ch('gerarin',t>=16950?290:gx,GY,{glow:'#6ad0ff',flip:t>=16950});
+      T('限界突破',W/2,50,26,'#ffffff',seg(t,15200,15500)*(t<16750?1:0),'#1a60c0');
+      T('げらりん「……ここで 終わらせる」',W/2,130,9,'#cfe8ff',seg(t,14800,15100)*(t<16000?1:0));
+      ev('ch',t,15200,()=>snd('warn'));ev('stk',t,16780,()=>{snd('shatter');snd('crit');});}
+    if(t>=16950&&t<18200){T('限界突破ストライク',W/2,40,20,'#ffffff',1-seg(t,17700,18200),'#1a60c0');}
+    flash(t>=16900?(1-seg(t,16900,17400))*(t>=16900?1:0):0);
+    /* ---- H：決め台詞 ---- */
+    if(t>=17800&&t<20300){
+      const hops=Math.abs(Math.sin((t-17800)/260*1.2));kkY=-hops*34;
+      ch('kakiume',170,GY+kkY,{s:1.7,glow:'#ffd84a'});
+      T('これが俺たちの絆なりねっ！！！！',W/2,66,12.5,'#fff7b0',eo(seg(t,18100,18400)),'#c06010');
+      ev('bond',t,18100,()=>{snd('chime');});}
+    /* ---- I：殴り飛ばし ---- */
+    if(t>=20000){const u=seg(t,20000,20300);
+      const jx=t<20300?lerp(95,150,ei(u)):150;
+      ch('kojiro',jx,GY,{glow:'#8ad0ff'});
+      if(t<20300)ch('kakiume',170,GY-Math.abs(Math.sin((t-17800)/260*1.2))*34*(1-u),{s:1.7});
+      if(t>=20300){const v=seg(t,20300,21300),kx2=lerp(170,420,v),ky=GY-30-Math.sin(Math.PI*Math.min(1,v*1.1))*70;
+        ch('kakiume',kx2,ky+30,{rot:v*18,s:1.7});
+        if(v<.2){star(168,GY-30,26*(1-v*4),'#fff',1);T('ドガァッ！',160,GY-70,14,'#ff6a40',1);}}
+      ev('pun',t,20300,()=>{snd('crit');snd('shatter');});
+      if(t>=20300)T('コジロー「調子に 乗るな」',W/2,36,10,'#bfe8ff',seg(t,20400,20700));}
+    /* HP表示 */
+    let hv=null;if(t>=3300&&t<20300)hv=kHP;if(t>=20300)hv=0;
+    g.setTransform(2,0,0,2,0,0);
+    if(hv!=null){hp(t,t>=20300?Math.max(0,1-seg(t,20300,20500)):hv,'カキウメ  HP '+(t>=20300?(t>=20500?0:'…'):(hv<=.01?1:Math.round(hv*100)+'%')));}
+    if(z>1){}
+    /* ---- 共通テキスト ---- */
+    g.setTransform(2,0,0,2,0,0);
+    if(t<2200)T('四人、集結',W/2,40,16,'#fff',Math.min(seg(t,400,800),1-seg(t,1800,2200)));
+    if(t>=2000&&t<3300)T('カキウメ「なりーっ！」',W/2,40,12,'#fff',1);
+    if(t>=3000&&t<3700)T('ずざーっ……',W/2,60,12,'#ffcf80',1);
+    if(t>=3500&&t<5900)T('ふんづけ！',W/2,36,16,'#ffb0b0',1);
+    if(t>=6200&&t<7400)T('……なり……',W/2,40,12,'#ffe9a0',seg(t,6200,6500));
+    if(t>=7000&&t<8000)T('覚　醒',W/2,50,26,'#ffd84a',Math.min(1,seg(t,7000,7150)),'#a05000');
+    if(t>=8300&&t<11000)T('ボコボコにする！',W/2,34,16,'#ffd0d0',1);
+    if(t>=20700)T('（カキウメは HP0に なった）',W/2,150,9,'#ccc',seg(t,20800,21200));
+    const fade=seg(t,21700,22400);if(fade>0){g.setTransform(2,0,0,2,0,0);g.fillStyle='rgba(0,0,0,'+fade+')';g.fillRect(0,0,W,H);}
+    requestAnimationFrame(frame);}
+  snd('warn');requestAnimationFrame(frame);});}
+{const _pc=playCombo;playCombo=async function(m,pm,c,s){
+  if(s&&s.quad){await say(`マグ・げらりん・コジロー・カキウメの 四人が 集まる——！`,1300);await quadScene();return;}
+  return _pc.apply(this,arguments);};}
+ACT_POST.push(async(m,c)=>{
+  if(!c||c.t!=='skill'||!c.s||!c.s.quad)return;
+  const k=S.party.find(x=>x.id==='kakiume');if(!k||k.hp<=0)return;
+  k.hp=0;updateParty();await say('カキウメは コジローに 殴り飛ばされた！\n（カキウメの HPが 0に なった……）',1800);});
 showTitle();requestAnimationFrame(frame);
 </script>
