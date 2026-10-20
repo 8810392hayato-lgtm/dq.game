@@ -11259,15 +11259,35 @@ TITLES.push(['reb1','転生者','いずれかのキャラが 転生する',()=>(
 PROF.sklv=PROF.sklv||{};
 const SKC=[50,80,120,170,230,300,400,520,680,900];
 DMGMODS.push((m,s,f,r)=>{const L=m&&m.slv&&s&&m.slv[s.n];if(L>10)r.d=Math.round(r.d*(1+.05*(L-10)));});
+const sklvList=id=>HERO[id].sk.filter(s=>s.t&&(s.k==='phys'||s.k==='mag')&&s.p);
+/* まとめて強化：低いLvの技から順に 1つずつ上げる（ジェムが 続くかぎり／Lv20まで） */
+function sklvPlan(ids,gems){
+  const lv={},plan=[];let spent=0,n=0;
+  const items=[];ids.forEach(id=>{PROF.sklv[id]=PROF.sklv[id]||{};sklvList(id).forEach(s=>items.push({id,s,L:PROF.sklv[id][s.n]||10,L0:PROF.sklv[id][s.n]||10}));});
+  for(;;){
+    let best=null;
+    for(const it of items){if(it.L>=20)continue;const c=SKC[it.L-10];if(spent+c>gems)continue;if(!best||it.L<best.L)best=it;}
+    if(!best)break;spent+=SKC[best.L-10];best.L++;n++;}
+  return {items:items.filter(x=>x.L>x.L0),spent,n};}
+async function sklvBulk(ids,label){
+  const pl=sklvPlan(ids,PROF.gems);
+  if(!pl.n){await say(PROF.gems<50?'ジェムが たりない。':'強化できる技が ない。（すべて Lv20 か、ジェム不足）');return;}
+  const per={};pl.items.forEach(x=>{per[x.id]=(per[x.id]||0)+(x.L-x.L0);});
+  const sum=Object.entries(per).slice(0,6).map(([id,v])=>PNAME[id]+' +'+v).join('　');
+  if(!(await yesno(`${label}を まとめて 強化する？\n（Lvの低い技から 順に Lv20まで）\n強化 ${pl.n}回　消費ジェム ${pl.spent}\n${sum}${Object.keys(per).length>6?' ほか':''}\n所持ジェム ${PROF.gems} → ${PROF.gems-pl.spent}`)))return;
+  PROF.gems-=pl.spent;pl.items.forEach(x=>{PROF.sklv[x.id][x.s.n]=x.L;});saveProf();
+  await say(`まとめて強化した！\n${pl.n}回（消費ジェム ${pl.spent}）\n残りジェム ${PROF.gems}`,1500);}
 async function sklvMenu(){
   PROF.sklv=PROF.sklv||{};
   for(;;){
-    const i=await choose(`スキル強化　ジェム${PROF.gems}\nLv10が基準。Lv11〜20は 威力が Lvごとに +5%`,OWN().map(id=>({l:PNAME[id],r:'強化済 '+Object.keys(PROF.sklv[id]||{}).length+'技'})));if(i<0)return;
-    const id=OWN()[i];
+    const i=await choose(`スキル強化　ジェム${PROF.gems}\nLv10が基準。Lv11〜20は 威力が Lvごとに +5%`,[{l:'★ 全員 まとめて強化',r:'ジェムの 続くかぎり'}].concat(OWN().map(id=>({l:PNAME[id],r:'強化済 '+Object.keys(PROF.sklv[id]||{}).length+'技'}))));if(i<0)return;
+    if(i===0){await sklvBulk(OWN(),'全員の 技');continue;}
+    const id=OWN()[i-1];
     for(;;){
-      const sk=HERO[id].sk.filter(s=>s.t&&(s.k==='phys'||s.k==='mag')&&s.p);PROF.sklv[id]=PROF.sklv[id]||{};
-      const j=await choose(`${PNAME[id]}　ジェム${PROF.gems}`,sk.map(s=>{const L=PROF.sklv[id][s.n]||10;return {l:s.n,r:'Lv'+L+(L>=20?'（最大）':'　次 '+SKC[L-10]+'ジェム'),dis:L>=20};}));if(j<0)break;
-      const s=sk[j],L=PROF.sklv[id][s.n]||10;if(L>=20)continue;const cost=SKC[L-10];
+      const sk=sklvList(id);PROF.sklv[id]=PROF.sklv[id]||{};
+      const j=await choose(`${PNAME[id]}　ジェム${PROF.gems}`,[{l:'★ この仲間の技を まとめて強化',r:'Lv20まで'}].concat(sk.map(s=>{const L=PROF.sklv[id][s.n]||10;return {l:s.n,r:'Lv'+L+(L>=20?'（最大）':'　次 '+SKC[L-10]+'ジェム'),dis:L>=20};})));if(j<0)break;
+      if(j===0){await sklvBulk([id],PNAME[id]+'の 技');continue;}
+      const s=sk[j-1],L=PROF.sklv[id][s.n]||10;if(L>=20)continue;const cost=SKC[L-10];
       if(PROF.gems<cost){await say('ジェムが たりない。（'+cost+' 必要）');continue;}
       if(!(await yesno(`${s.n}を Lv${L+1}に 強化？\n消費ジェム ${cost}\n威力 +${(L-9)*5}% → +${(L-8)*5}%`)))continue;
       PROF.gems-=cost;PROF.sklv[id][s.n]=L+1;saveProf();await say(`${s.n}が Lv${L+1}に なった！`,700);
