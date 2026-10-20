@@ -6535,7 +6535,9 @@ window.ONL=(()=>{
     const taken=id=>ps.find(p=>(p.presence.chs||[]).includes(id));
     const link=location.href.split('#')[0]+'#r='+O.code;
     const ql=quota();if(!O.qid){const mx=Math.max(1,...O.chs.map(id=>(PROF.chars[id]||{}).lv||1));const c=QUESTS.filter(x=>x.tier>=1&&x.tier<=4&&(x.rec||x.lv)<=mx).sort((a,b)=>b.tier-a.tier||(b.rec||b.lv)-(a.rec||a.lv))[0];O.qid=c?c.id:'q1';}
-    const q=QUESTS.find(x=>x.id===(sorted()[0]&&sorted()[0].presence.qid||O.qid))||QUESTS[0];
+    /* リーダーは 自分で選んだ難易度を 優先（同期が 古い値を 返しても 戻されない）。ずれていたら 送りなおす */
+    const q=QUESTS.find(x=>x.id===((lead&&O.qid)?O.qid:(sorted()[0]&&sorted()[0].presence.qid||O.qid)))||QUESTS[0];
+    if(lead&&O.qid&&sorted()[0]&&sorted()[0].presence.qid!==O.qid&&Date.now()-(O.qidT||0)>1500){O.qidT=Date.now();try{O.room.presence({qid:O.qid});}catch(e){}}
     b.innerHTML=`<h3>${O.room.p2p?'コピペ接続の部屋':'ルーム　'+O.code}</h3>
     <div class="row pl">${O.room.p2p?'<button class="ob" id="o_cp" style="display:none">コピー</button>':'リンク：<button class="ob" id="o_cp">コピー</button> 入れない時はコード <b style="color:#fff">'+O.code+'</b> を伝えてください'}<br><span id="o_diag" style="color:#8a92d0">接続：${O.room.diag?O.room.diag():''}</span></div>
     <div class="row">なまえ：<input class="nm" size="10" maxlength="8" value="${O.nm.replace(/"/g,'')}"></div>
