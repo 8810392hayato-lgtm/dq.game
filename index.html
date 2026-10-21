@@ -944,6 +944,7 @@ async function commandFor1(m){
     const opts=[{k:'atk',l:'たたかう'},{k:'skill',l:'スキル',dis:m.sealed>0,r:m.sealed>0?'封印':''},{k:'item',l:'どうぐ'},{k:'guard',l:'ぼうぎょ'}];
     if(B.opts.swap&&benchOf().some(b=>b.hp>0))opts.push({k:'swap',l:'こうたい',r:'結界へ'});
     if(m.id!=='kakiume'&&S.party.some(x=>x.id==='kakiume'&&x.hp>0))opts.push({k:'kk',l:'カキウメを なぐる',r:'なり？'});
+    if(S.reserve&&S.reserve.hp>0&&m.hp>0&&!(window.ONL&&ONL.on))opts.push({k:'rsv',l:'控えと こうたい',r:pn(S.reserve)+' '+S.reserve.hp+'/'+stat(S.reserve,'hp')});
     if(!B.opts.noRun)opts.push({k:'run',l:'にげる'});
     const i=await choose(pn(m),opts);
     if(i<0)return null;
@@ -951,6 +952,7 @@ async function commandFor1(m){
     if(k==='atk'){const t=await pickFoe();if(t<0)continue;return {t:'atk',tg:t};}
     if(k==='guard'){m.guard=true;return {t:'guard'};}
     if(k==='kk')return {t:'kk'};
+    if(k==='rsv')return {t:'rsv'};
     if(k==='swap'){const bs=benchOf().filter(b=>b.hp>0);const j=await choose('だれと こうたい？',bs.map(b=>({l:pn(b),r:`${b.hp}/${stat(b,'hp')}`})));if(j<0)continue;return {t:'swap',to:bs[j].id};}
     if(k==='run')return {t:'run'};
     if(k==='skill'){
@@ -992,6 +994,9 @@ async function partyAct(m,c){
   if(m.hp<=0)return;const n=pn(m);m.actT=14;B.cmbP=null;B.cmbPs=null;
   if(c.t==='bound'){await say(`${n}は 拘束されて 動けない！`,800);return;}
   if(c.t==='rest'){await say(`${n}は 反動で 動けない……！`,800);return;}
+  if(c.t==='rsv'){const nm=S.reserve,idx=S.party.indexOf(m);if(idx<0||!nm||nm.hp<=0||m.hp<=0){await say(`${n}は 控えと 交代しようとしたが……できなかった。`,900);return;}
+    S.party[idx]=nm;S.reserve=m;nm.guard=false;m.guard=false;m.buff=0;updateParty();
+    await say(`${n}は 後ろへ 下がった！\n控えの ${pn(nm)}が 前に出た！`,1200);return;}
   if(c.t==='swap'){const nm=S.roster[c.to];const idx=S.party.indexOf(m);if(idx<0||!nm||nm.hp<=0)return;S.party[idx]=nm;nm.guard=false;updateParty();
     await say(`${n}は 結界の内側へ 下がった！\n${pn(nm)}が 前に出た！`,1200);return;}
   if(c.t==='guard'){await say(`${n}は 身をまもっている。`,650);return;}
@@ -8110,7 +8115,7 @@ function dataPanel(mode){return new Promise(res=>{
 });}
 const TMUL=[0,4,5,6,10,24,0,14,14,0,0,0,18,16],GMUL=[0,30,60,120,400,15,40,120,0,0,0,0,150,130];
 async function questReward(q,online,me){
-  const lines=['クエスト 達成！'];const mine=S.party.filter(m=>!online||m.o===me);
+  const lines=['クエスト 達成！'];const mine=S.party.concat(S.reserve&&!S.party.includes(S.reserve)?[S.reserve]:[]).filter(m=>!online||m.o===me);
   const owners=online?[...new Set(S.party.map(m=>m.o))]:[null],N=Math.max(1,owners.length);
   const dly=isDailyPick(q.id)&&!PROF.daily.got[q.id]&&!online;if(dly){PROF.daily.got[q.id]=1;lines.push('★今日のおすすめ！ 報酬2倍');}
   if(N>1)lines.push(`★${N}人協力ボーナス！ 報酬アップ`);
@@ -8125,8 +8130,9 @@ async function questReward(q,online,me){
   const roll=(w,p,label)=>{if(N>1)lines.push(`${label}の抽選（${Math.round(p*100)}%×${N}人分）`);
     let hit=0;owners.forEach(()=>{if(rr()<p)hit++;});
     for(let h=0;h<hit;h++){window.__DROPFX=w;PROF.inv.push({...w,u:PROF.uid++,...(w.kx?{slot:SLOTK[Math.floor(Math.random()*SLOTK.length)]}:{})});dexGear(w);lines.push('★ '+w.n+' を手に入れた！！'+(w.only?'（'+PNAME[w.only]+'専用）':'')+(N>1?'　（全員に配布）':''));}};
-  if(q.id==='q7'&&S.party.some(m=>m.id==='lilith'))roll(BENI,.01,'紅ノ支配');
-  if(q.uniq){const w=UNIW[q.uniq];if(S.party.some(m=>m.id===w.only))roll(w,(w.kx&&w.only==='lilith')?.01:.05,w.n);}
+  const inTeam=id=>S.party.some(m=>m.id===id)||(S.reserve&&S.reserve.id===id);
+  if(q.id==='q7'&&inTeam('lilith'))roll(BENI,.01,'紅ノ支配');
+  if(q.uniq){const w=UNIW[q.uniq];if(inTeam(w.only))roll(w,(w.kx&&w.only==='lilith')?.01:.05,w.n);}
   if(q.recruit){q.recruit.forEach(id=>{if(!PROF.have[id]){PROF.have[id]=true;const ow=PCHARS.filter(x=>!NEWC.includes(x)||(PROF.have[x]&&x!==id)).map(x=>PROF.chars[x].lv).sort((p,c)=>c-p).slice(0,4);
     const lv=Math.max(5,Math.min(profCap(),Math.round((ow.reduce((p,c)=>p+c,0)/Math.max(1,ow.length))*.8)));PROF.chars[id].lv=lv;PROF.chars[id].exp=0;lines.push('★ '+PNAME[id]+' が 仲間に なった！！（Lv'+lv+'）');}});}
   if(typeof gemGain==='function'){const gg=gemGain(q,!PROF.done[q.id]);if(gg>0)lines.push('★ ジェム +'+gg+' を手に入れた！');}
@@ -8428,7 +8434,9 @@ clear <クエストID|all> … クエストクリア扱い（IF①〜③は if1 
 daily reset / login reset … 日替わり・ログボをリセット
 list q|chars|inv … 一覧表示
 save / reset prof … 保存 / プロフィール初期化
-status … 現在のデータ概要`;
+status … 現在のデータ概要
+reserve on|off … 【控え】（4人＋控え1人）を 解放／ロック
+quadskip on|off … マグ・げらりん・コジロー・カキウメの連携技演出を スキップ可能に（ソロ限定。通常プレイは右上ボタン／オート・カスタムオートは自動スキップ）`;
 function dbgRun(line,out){
   const a=line.trim().split(/\s+/),c=(a[0]||'').toLowerCase().replace(/^\//,'');if(!c)return;
   const P=s=>out(s);
@@ -8475,6 +8483,9 @@ function dbgRun(line,out){
   else if(c==='status'){P('所持金'+PROF.gold+'G　Lv上限'+profCap()+'　到達章'+PROF.reach+'　第7章クリア:'+(PROF.clear7?'済':'未')+'　装備'+PROF.inv.length+'個');}
   else if(c==='save'){saveProf();P('保存した');}
   else if(c==='reset'){if(a[1]==='prof'&&a[2]==='yes'){PROF=newProf();saveProf();P('プロフィールを初期化した');}else P('本当に初期化するなら: reset prof yes');}
+  else if(c==='reserve'){const on=a[1]!=='off';PROF.reserveOn=on;saveProf();P('【控え】 '+(on?'解放した（パーティ編成のあとで 控えを選べる）':'ロックした'));}
+  else if(c==='quadskip'){const on=a[1]==='on',off=a[1]==='off';if(!on&&!off){P('四重奏スキップ: '+(localStorage.getItem('dq-quadskip')==='1'?'ON':'OFF')+'\n使い方: quadskip on|off（ソロ限定。通常はスキップボタン、オート・カスタムオートは自動スキップ）');return;}
+    try{localStorage.setItem('dq-quadskip',on?'1':'0');}catch(e){}P('四重奏スキップ '+(on?'ON':'OFF'));}
   else P('不明なコマンド: '+c+'（helpで一覧）');
   }catch(e){P('エラー: '+e.message);}
 }
@@ -15201,11 +15212,12 @@ function farmUI(on){
   if(on){FM.btn.textContent='■ オート周回を 止める';FM.btn.style.display=FM.online?'none':'block';}
 }
 function farmInfo(t){if(FM.info)FM.info.textContent=t;}
-const farmSnap=()=>({g:PROF.gold,inv:PROF.inv.length,gem:PROF.gems|0,lv:PCHARS.reduce((n,id)=>n+(PROF.chars[id]?PROF.chars[id].lv:0),0)});
+const farmIsU=x=>x&&(x.only||x.uni||x.kx);
+const farmSnap=()=>({uw:new Set(PROF.inv.filter(farmIsU).map(x=>x.u)),g:PROF.gold,inv:PROF.inv.length,gem:PROF.gems|0,lv:PCHARS.reduce((n,id)=>n+(PROF.chars[id]?PROF.chars[id].lv:0),0)});
 function farmSet(on){window.__AUTO=on;window.__FARM=on;window.__SKIP=on;if(window.skipSet)try{skipSet(on);}catch(e){}window.__SKIP=on;}
 async function farmSummary(q,n,ok,a,b,why){
   farmSet(false);farmUI(false);hideMsg();
-  await say(`オート周回 終了（${why}）\n${q.name}　${ok}/${n}回 成功\n獲得ゴールド +${b.g-a.g}G\n装備ドロップ +${b.inv-a.inv}個　合計Lv +${b.lv-a.lv}`+(FM.rb?`\n道具の買い直し ${FM.rb.n}個（${FM.rb.g}G）`+(FM.rb.short?'\n（お金が 足りず 補充しきれなかった）':''):''));FM.rb=null;
+  await say(`オート周回 終了（${why}）\n${q.name}　${ok}/${n}回 成功\n獲得ゴールド +${b.g-a.g}G\n装備ドロップ +${b.inv-a.inv}個　合計Lv +${b.lv-a.lv}`+(()=>{const nw=PROF.inv.filter(x=>farmIsU(x)&&!a.uw.has(x.u));if(!nw.length)return '\n専用武器ドロップ 0個';const c={};nw.forEach(x=>{c[x.n]=(c[x.n]||0)+1;});return '\n専用武器ドロップ '+nw.length+'個\n'+Object.entries(c).map(([k,v])=>'　★'+k+(v>1?' ×'+v:'')).join('\n');})()+(FM.rb?`\n道具の買い直し ${FM.rb.n}個（${FM.rb.g}G）`+(FM.rb.short?'\n（お金が 足りず 補充しきれなかった）':''):''));FM.rb=null;
   hideMsg();
 }
 function farmRestock(tg,st){PROF.items=PROF.items||{};let sp=0;
@@ -15259,6 +15271,10 @@ window.farmOnline=async function(q,party,N,me){
     if(c<0)return {ok:false};
     const N=[5,20,50,200,999][c];
     const ids=party.map(x=>x.id);
+    for(;;){PROF.cauto=PROF.cauto||{};const nset=ids.filter(id=>PROF.cauto[id]&&PROF.cauto[id].length).length;
+      const w=await choose('オートの 戦い方',[{l:'標準オート',r:'最強技＋回復'},{l:'カスタムオート',r:nset?nset+'人 設定済み':'未設定'},{l:'カスタムオートを 設定する',r:'1〜4ターン目の行動を くりかえし'}]);
+      if(w<0)return {ok:false};if(w===2){await caSetup(ids);continue;}
+      PROF.cautoOn=w===1;saveProf();break;}
     const rbk=await choose('消耗した どうぐ',[{l:'自動で 買い直す',r:'所持金から（開始時の個数まで）'},{l:'買い直さない'}]);
     await farmSolo(q,ids,N,_rq,rbk===0);try{menuCtx();}catch(e){}
     return {ok:true,farm:true};
@@ -16982,14 +16998,19 @@ ACT_POST.push(async(m,c)=>{
 /* ===== 四人連携技【絆ノ四重奏】マグ＋げらりん＋コジロー＋カキウメ：スキップ不可の長尺演出 ===== */
 const QUAD_IDS=['mag','gerarin','kojiro','kakiume'],QUAD_N='絆ノ四重奏・これが俺たちの絆なりね';
 window.__regQUAD=()=>QUAD_IDS.forEach(id=>{if(!HERO[id]||HERO[id].sk.some(s=>s.n===QUAD_N))return;const o=QUAD_IDS.filter(x=>x!==id);
-  HERO[id].sk.push({n:QUAD_N,lv:1,mp:40,t:'one',k:'phys',p:17,pierce:true,req:'q',special:'combo',combo:o[0],comboAll:o,with:o[0],withAll:o,quad:true});});
+  HERO[id].sk.push({n:QUAD_N,lv:1,mp:40,t:'all',k:'phys',p:17,pierce:true,req:'q',special:'combo',combo:o[0],comboAll:o,with:o[0],withAll:o,quad:true});});
 window.__regQUAD();
+const quadSkipOK=()=>{try{return !!DBG&&localStorage.getItem('dq-quadskip')==='1'&&!(window.ONL&&ONL.on);}catch(e){return false;}};
 function quadScene(){return new Promise(res=>{
+  const SKOK=quadSkipOK();
+  if(SKOK&&(window.__AUTO||window.__FARM)){res();return;}
   const el=document.createElement('div');
   el.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none';
-  const stop=e=>{e.stopPropagation();e.preventDefault();};
+  let skipNow=false;
+  const stop=e=>{if(e.target&&e.target.id==='quadskipb')return;e.stopPropagation();e.preventDefault();};
   ['click','touchstart','touchend','pointerdown','keydown','keyup'].forEach(t=>el.addEventListener(t,stop,true));
   const kb=e=>{e.stopPropagation();e.preventDefault();};window.addEventListener('keydown',kb,true);
+  if(SKOK){const sb=document.createElement('button');sb.id='quadskipb';sb.textContent='スキップ ▶▶';sb.style.cssText='position:absolute;top:10px;right:10px;z-index:3;font:inherit;font-size:14px;padding:8px 14px;background:rgba(0,0,0,.7);color:#fff;border:1px solid #fff9;border-radius:6px';sb.onclick=()=>{skipNow=true;};el.appendChild(sb);}
   const cv=document.createElement('canvas');cv.width=640;cv.height=360;
   cv.style.cssText='width:min(100vw,177.78vh);height:auto;aspect-ratio:16/9;image-rendering:pixelated;background:#000';
   el.appendChild(cv);document.body.appendChild(el);
@@ -17024,7 +17045,7 @@ function quadScene(){return new Promise(res=>{
   let t0=performance.now(),last=0;
   function frame(){
     const t=performance.now()-t0;
-    if(t>=DUR){window.removeEventListener('keydown',kb,true);el.remove();res();return;}
+    if(t>=DUR||skipNow){window.removeEventListener('keydown',kb,true);el.remove();res();return;}
     g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,W,H);
     let cx=W/2,cy=H/2,z=1,shk=0;
     /* ---- カメラ ---- */
@@ -17502,5 +17523,91 @@ STATMODS.push((m,k,v)=>{
   else L.push('冒険者ランク '+r1+'　（次まで あと '+Math.max(0,advNeed(r1+1)-p)+'pt）');
   await say(L.join('\n'),r1>r0?3600:2200);hideMsg();return r;};}
 [10,20,30,40,50].forEach(n=>TITLES.push(['adv'+n,'冒険者ランク'+n,'全クエスト踏破で 冒険者ランク'+n+' に到達',()=>{try{return advRank();}catch(e){return 0;}},n]));
+/* ===== カスタムオート：キャラごとに 1〜4ターン目の行動を 決めておき、それを 繰り返す（オート周回用） =====
+   PROF.cauto[キャラID]=[{t:'atk'}|{t:'guard'}|{t:'skill',n}|{t:'item',k}…]  ／ PROF.cautoOn */
+const CA_ITEMS=['potion','hpotion','ether','ether2','qhp','qmp','qhp2','qmp2','elixir','revive','rev2'];
+const caTxt=st=>!st?'—':st.t==='atk'?'たたかう':st.t==='guard'?'ぼうぎょ':st.t==='skill'?st.n:st.t==='item'?((ITEMS[st.k]&&ITEMS[st.k].n)||st.k):'—';
+const caSum=id=>{const a=(PROF.cauto&&PROF.cauto[id])||[];return a.length?a.map((s,i)=>(i+1)+'T:'+caTxt(s)).join(' ／ '):'標準オート';};
+{const _ac=autoCmd;autoCmd=function(m){
+  if(!window.__FARM||!PROF.cautoOn||!PROF.cauto||!m)return _ac(m);
+  const seq=PROF.cauto[m.id];if(!seq||!seq.length||m.sealed>0)return _ac(m);
+  const st=seq[((B.round||1)-1)%seq.length],c=caRun(m,st);
+  return c||_ac(m);};}
+function caRun(m,st){
+  if(!st||!B)return null;const fs=live();if(!fs.length)return null;
+  const tf=fs.find(f=>!f.immune&&!f.passiveT)||fs[0],tg=B.foes.indexOf(tf);
+  const hpr=x=>x.hp/stat(x,'hp');
+  if(st.t==='atk')return {t:'atk',tg};
+  if(st.t==='guard'){m.guard=true;return {t:'guard'};}
+  if(st.t==='skill'){
+    const s=skillsOf(m).find(x=>x.n===st.n);if(!s||m.mp<s.mp||(s.hold&&false))return null;
+    if(s.t==='one')return {t:'skill',s,tg};
+    if(s.t==='ally'){const a=S.party.filter(x=>x.hp>0).sort((p,q)=>hpr(p)-hpr(q))[0];return a?{t:'skill',s,tg:S.party.indexOf(a)}:null;}
+    if(s.t==='deadally'){const d=S.party.findIndex(x=>x.hp<=0);return d>=0?{t:'skill',s,tg:d}:null;}
+    return {t:'skill',s,tg:-1};}
+  if(st.t==='item'){
+    if(invCnt(m,st.k)<=0)return null;
+    if(st.k==='revive'||st.k==='rev2'){const d=S.party.findIndex(x=>x.hp<=0);return d>=0?{t:'item',k:st.k,tg:d}:null;}
+    if(['ether','ether2','qmp','qmp2','elixir'].includes(st.k)){const a=S.party.filter(x=>x.hp>0&&!x.mpBreak).sort((p,q)=>p.mp/stat(p,'mp')-q.mp/stat(q,'mp'))[0];return a?{t:'item',k:st.k,tg:S.party.indexOf(a)}:null;}
+    const a=S.party.filter(x=>x.hp>0).sort((p,q)=>hpr(p)-hpr(q))[0];return a?{t:'item',k:st.k,tg:S.party.indexOf(a)}:null;}
+  return null;}
+/* 1ステップ選ぶ */
+async function caPickStep(id,i,hasPrev){
+  const m={id,lv:PROF.chars[id]?PROF.chars[id].lv:50};
+  for(;;){
+    const opts=[{k:'atk',l:'たたかう'},{k:'guard',l:'ぼうぎょ'},{k:'skill',l:'スキル'},{k:'item',l:'どうぐ'}];
+    if(hasPrev)opts.push({k:'end',l:'ここまで',r:'以降は 1ターン目に もどる'});
+    const k=await choose(`${i}ターン目の 行動`,opts);if(k<0)return undefined;const key=opts[k].k;
+    if(key==='end')return null;
+    if(key==='atk')return {t:'atk'};if(key==='guard')return {t:'guard'};
+    if(key==='skill'){const H=HERO[id];const lvl=m.lv;const sk=((H&&H.sk)||[]).filter(s=>s&&s.n&&!s.gate).filter((s,j,a)=>a.findIndex(x=>x.n===s.n)===j);
+      if(!sk.length){await say('使える スキルが ない。',900);continue;}
+      const j=await choose('スキル',sk.map(s=>({l:s.n,r:(typeof skTag==='function'?skTag(s):'')+' MP'+s.mp})));if(j<0)continue;return {t:'skill',n:sk[j].n};}
+    if(key==='item'){const j=await choose('どうぐ（なければ 標準オートで 動く）',CA_ITEMS.filter(x=>ITEMS[x]).map(x=>({l:ITEMS[x].n,r:(PROF.items&&PROF.items[x]!=null)?'所持'+(PROF.items[x]|0):''})));if(j<0)continue;return {t:'item',k:CA_ITEMS.filter(x=>ITEMS[x])[j]};}
+  }}
+/* 設定画面（ids：今回のパーティ） */
+async function caSetup(ids){
+  PROF.cauto=PROF.cauto||{};
+  for(;;){
+    const opts=ids.map(id=>({l:PNAME[id]||id,r:caSum(id)}));opts.push({l:'すべて 標準オートに もどす'});
+    const i=await choose('カスタムオート設定\n誰の 行動を 決める？（最大4ターンぶんを くりかえす）',opts);
+    if(i<0)return;
+    if(i===ids.length){PROF.cauto={};saveProf();continue;}
+    const id=ids[i];
+    const a=await choose((PNAME[id]||id)+'\n'+caSum(id),[{l:'行動を 設定する'},{l:'標準オートに もどす'}]);
+    if(a<0)continue;
+    if(a===1){delete PROF.cauto[id];saveProf();continue;}
+    const seq=[];
+    for(let n=1;n<=4;n++){
+      const st=await caPickStep(id,n,n>1);
+      if(st===undefined){if(n===1)break;else break;}
+      if(st===null)break;seq.push(st);
+      if(n===4)break;}
+    if(seq.length){PROF.cauto[id]=seq;saveProf();await say((PNAME[id]||id)+'：'+caSum(id)+'\nをくりかえす。',1400);}
+  }}
+/* ===== 【控え】：4人パーティ＋控え1人。控えと交代すると 1ターン使う。死んだキャラは交代できない／全滅は 控えが生きていても 敗北／控えでも 専用武器の抽選は される =====
+   解放：無冠ノ役者（滅級【伝説への挑戦】）のクリア報酬。デバッグ：reserve on|off */
+{const _pp=pickParty;pickParty=async function(max){
+  window.__RSV=null;
+  const ids=await _pp.apply(this,arguments);
+  if(!ids||!ids.length||!PROF.reserveOn||max!==4)return ids;
+  const cand=OWN().filter(x=>!ids.includes(x));if(!cand.length)return ids;
+  const i=await choose('【控え】を 1人 選べる\n（戦闘中に 1ターン使って 交代できる。\n　控えでも 専用武器の抽選は される）',[{l:'控えなし'}].concat(cand.map(id=>({l:PNAME[id],r:lvTxt(PROF.chars[id].lv)}))));
+  if(i>0)window.__RSV=cand[i-1];
+  return ids;};}
+{const _qs=questState;questState=function(party){
+  _qs.apply(this,arguments);S.reserve=null;
+  const id=window.__RSV;
+  if(!id||!PROF.reserveOn||(window.ONL&&ONL.on)||S.party.some(x=>x.id===id)||!PROF.chars[id])return;
+  const p=profParty([id])[0];
+  const m={id:p.id,lv:p.lv,exp:p.exp||0,form:0,buff:0,guard:false,shield:0,eq:(p.eq||[]).filter(Boolean),o:null,ex:(p.ex===true?1:(p.ex|0)),em:p.em|0,slv:p.slv||null};
+  S.roster[id]=m;m.hp=stat(m,'hp');m.mp=stat(m,'mp');S.reserve=m;};}
+{const _rq=runQuest;runQuest=async function(q){
+  let r;
+  try{r=await _rq.apply(this,arguments);}finally{S.reserve=null;}
+  if(q&&q.leg&&r&&r.ok&&!PROF.reserveOn){PROF.reserveOn=true;saveProf();
+    await say('★ 【控え】が 解放された！\n（パーティ編成の あとで 控えを 1人 選べる。\n　戦闘中に 1ターン使って 交代できる。\n　死んだ仲間とは 交代できず、全滅したら 控えが 生きていても 負け。\n　控えでも 専用武器の抽選は される）',4200);hideMsg();}
+  return r;};}
+{const _qm=questMenu;questMenu=async function(){window.__RSV=null;return _qm.apply(this,arguments);};}
 showTitle();requestAnimationFrame(frame);
 </script>
