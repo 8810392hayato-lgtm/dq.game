@@ -6514,7 +6514,7 @@ window.ONL=(()=>{
     await O.room.presence({nm,chs:O.chs,pc:pcData(),tt:myTt(),t:O.t,dec:[],mv:[]}).catch(()=>{});
     ui.box.style.display='block';renderLobby();
   };
-  function qTiers(){const ord=[1,2,3,4,13,14,15,16,17,18,8,11,12,10,5,6,7,9],have=new Set(QUESTS.filter(x=>x.tier>0).map(x=>x.tier));return ord.filter(t=>have.has(t)).concat([...have].filter(t=>!ord.includes(t)).sort((x,y)=>x-y));}
+  function qTiers(){const ord=[1,2,3,4,13,14,15,16,17,18,8,11,12,10,19,5,6,7,9],have=new Set(QUESTS.filter(x=>x.tier>0).map(x=>x.tier));return ord.filter(t=>have.has(t)).concat([...have].filter(t=>!ord.includes(t)).sort((x,y)=>x-y));}
   function renderLobby(){
     if(!ui||ui.box.style.display==='none')return;
     {const ae=document.activeElement;if(ae&&ae.tagName==='SELECT'&&ui.box.contains(ae))return;}
@@ -8153,7 +8153,7 @@ async function questMenu(){
     const QO=[{l:'クエストに出る',r:'★おすすめ有'},{l:'修行場',r:'経験値かせぎ・メタル出現'},{l:'日課：師範の特訓',r:PROF.daily.dx===todayStr()?'受取済み':'★初回ボーナス'},{l:'ガチャ',r:'ジェム'+PROF.gems},{l:'無限回廊',r:'最高'+(((PROF.inf||{}).best)|0)+'階'},{l:'装備'},{l:'工房',r:'強化・合成・売却'},{l:'ショップ',r:'道具'},{l:'図鑑'},{l:'ファンルーム',r:'紹介・おまけ・クイズ'},{l:'称号・実績',r:(typeof titleSummary==='function'?titleSummary():'')},{l:'ステータス'},{l:'スキル強化',r:'ジェムでLv20まで'},{l:'きせかえ',r:'クエストで衣装が増える'},{l:'バックアップ',r:'自動保存から戻す'},{l:'データの書き出し'},{l:'データの読み込み'},{l:'コマンド入力'},{l:'タイトルへ'}];if(!dbgUnlocked())QO.splice(QO.findIndex(o=>o.l==='コマンド入力'),1);
     const i0=await choose(`クエスト・育成　所持金${PROF.gold}G　${PROF.clear7?'Lv9999から 転生できる':'Lv上限'+profCap()}`+(PROF.title&&typeof titleName==='function'?'\n'+titleName(PROF.title):''),QO,{cancel:false});const lab=QO[i0]?QO[i0].l:'';const ORD=['クエストに出る','修行場','日課：師範の特訓','ガチャ','無限回廊','装備','工房','図鑑','称号・実績','ステータス','データの書き出し','データの読み込み','コマンド入力'];const i=lab==='スキル強化'?93:lab==='きせかえ'?94:lab==='バックアップ'?95:lab==='ファンルーム'?96:lab==='ショップ'?97:lab==='タイトルへ'?99:ORD.indexOf(lab);
     if(i===0){
-      const TL=[1,2,3,4,8,11,13,14,15,16,17,18,12,10].filter(n=>QUESTS.some(x=>x.tier===n));
+      const TL=[1,2,3,4,8,11,13,14,15,16,17,18,12,10,19].filter(n=>QUESTS.some(x=>x.tier===n));
       const RQ=(PROF.recentQ||[]).map(id=>QUESTS.find(x=>x.id===id)).filter(Boolean).slice(0,3);
       const t=await choose('難易度'+(RQ.length?'　（★は 最近 遊んだクエスト）':''),RQ.map(q=>({l:'★ '+q.name,r:TIERN[q.tier]})).concat(TL.map(n=>({l:TIERN[n],r:(()=>{const L=QUESTS.filter(x=>x.tier===n);const d=L.filter(x=>PROF.done[x.id]).length;return d+'/'+L.length+' クリア';})()}))));if(t<0)continue;
       let q;
@@ -15205,15 +15205,21 @@ const farmSnap=()=>({g:PROF.gold,inv:PROF.inv.length,gem:PROF.gems|0,lv:PCHARS.r
 function farmSet(on){window.__AUTO=on;window.__FARM=on;window.__SKIP=on;if(window.skipSet)try{skipSet(on);}catch(e){}window.__SKIP=on;}
 async function farmSummary(q,n,ok,a,b,why){
   farmSet(false);farmUI(false);hideMsg();
-  await say(`オート周回 終了（${why}）\n${q.name}　${ok}/${n}回 成功\n獲得ゴールド +${b.g-a.g}G\n装備ドロップ +${b.inv-a.inv}個　合計Lv +${b.lv-a.lv}`);
+  await say(`オート周回 終了（${why}）\n${q.name}　${ok}/${n}回 成功\n獲得ゴールド +${b.g-a.g}G\n装備ドロップ +${b.inv-a.inv}個　合計Lv +${b.lv-a.lv}`+(FM.rb?`\n道具の買い直し ${FM.rb.n}個（${FM.rb.g}G）`+(FM.rb.short?'\n（お金が 足りず 補充しきれなかった）':''):''));FM.rb=null;
   hideMsg();
 }
-async function farmSolo(q,ids,N,_rq){
-  const a=farmSnap();let ok=0,n=0,why='指定回数を 達成';FM.stop=false;FM.why=null;FM.online=false;farmUI(true);farmSet(true);
+function farmRestock(tg,st){PROF.items=PROF.items||{};let sp=0;
+  for(const [k,p] of QSHOP){const want=Math.min(99,tg[k]||0),have=PROF.items[k]||0;if(have>=want)continue;
+    const n=Math.min(want-have,Math.floor(PROF.gold/p));if(n>0){PROF.gold-=n*p;PROF.items[k]=have+n;sp+=n*p;st.n+=n;}
+    if(have+Math.max(0,n)<want)st.short=true;}
+  st.g+=sp;if(sp)saveProf();}
+async function farmSolo(q,ids,N,_rq,rebuy){
+  const a=farmSnap();const RB={n:0,g:0,short:false},tg={...(PROF.items||{})};FM.rb=rebuy?RB:null;let ok=0,n=0,why='指定回数を 達成';FM.stop=false;FM.why=null;FM.online=false;farmUI(true);farmSet(true);
   try{
     while(n<N){
       if(FM.stop){why=FM.why||'手動で停止';break;}
-      farmInfo(`${q.name}\n${n+1}/${N}回目　成功${ok}`);
+      if(rebuy&&n>0)farmRestock(tg,RB);
+      farmInfo(`${q.name}\n${n+1}/${N}回目　成功${ok}`+(rebuy&&RB.n?`\n道具買い直し ${RB.n}個（${RB.g}G）`:''));
       let r;try{r=await _rq(q,profParty(ids),false);}catch(e){why='エラーで停止';break;}
       n++;if(r&&r.ok)ok++;else{why='全滅・失敗で停止';break;}
       await sleep(30);
@@ -15253,7 +15259,8 @@ window.farmOnline=async function(q,party,N,me){
     if(c<0)return {ok:false};
     const N=[5,20,50,200,999][c];
     const ids=party.map(x=>x.id);
-    await farmSolo(q,ids,N,_rq);try{menuCtx();}catch(e){}
+    const rbk=await choose('消耗した どうぐ',[{l:'自動で 買い直す',r:'所持金から（開始時の個数まで）'},{l:'買い直さない'}]);
+    await farmSolo(q,ids,N,_rq,rbk===0);try{menuCtx();}catch(e){}
     return {ok:true,farm:true};
   }finally{FM.on=false;}
 };}
@@ -17156,5 +17163,344 @@ ACT_POST.push(async(m,c)=>{
   k.hp=0;updateParty();await say('カキウメは コジローに 殴り飛ばされた！\n（カキウメの HPが 0に なった……）',1800);});
 /* 四人連携技：ダメージ上限を 無視する */
 {const _dc=window.DMGCAP;window.DMGCAP=function(m,s,f,r){if(s&&s.quad&&!f.hitHP)return;return _dc(m,s,f,r);};}
+/* ===== 滅級【終焉の庭園・覚醒】の演出：登場／覚醒／消滅／カウントダウン10／決着（すべてスキップ不可） ===== */
+const GDC={mana:{a:'#c060ff',b:'#ff9ae8',bg:['#14041e','#3a1458'],n:'マナ',t:'紫薔薇の邪神',spr:'mana'},maria:{a:'#ff3a52',b:'#ffffff',bg:['#0a0508','#34101a'],n:'マリア',t:'神呪の継承者',spr:'maria0'},mara:{a:'#5fd8ff',b:'#e8fbff',bg:['#020c1a','#0a3050'],n:'マラ',t:'二代目の水神',spr:'mara'}};
+function gdCV(dur,draw,o){const FI=o&&o.fi!=null?o.fi:400,FO=o&&o.fo!=null?o.fo:600;return new Promise(res=>{
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none';
+  const stop=e=>{e.stopPropagation();e.preventDefault();};
+  ['click','touchstart','touchend','pointerdown','keydown','keyup'].forEach(t=>el.addEventListener(t,stop,true));
+  const kb=e=>{e.stopPropagation();e.preventDefault();};window.addEventListener('keydown',kb,true);
+  const cv=document.createElement('canvas');cv.width=640;cv.height=360;
+  cv.style.cssText='width:min(100vw,177.78vh);height:auto;aspect-ratio:16/9;image-rendering:pixelated;background:#000';
+  el.appendChild(cv);document.body.appendChild(el);
+  const g=cv.getContext('2d');g.imageSmoothingEnabled=false;
+  const W=320,H=180,GY=124,SPc={},fired={};
+  const cl=v=>Math.max(0,Math.min(1,v)),seg=(t,a,b)=>cl((t-a)/(b-a)),eo=u=>1-(1-u)*(1-u),ei=u=>u*u,lerp=(a,b,u)=>a+(b-a)*u;
+  const rnd=i=>{const s=Math.sin(i*12.9898+78.233)*43758.5453;return s-Math.floor(s);};
+  const snd=n=>{try{SND.play(n,1);}catch(e){}};
+  const Hh={W,H,GY,cl,seg,eo,ei,lerp,rnd,snd,
+    ev:(k,t,a,fn)=>{if(t>=a&&!fired[k]){fired[k]=1;fn();}},
+    spr:(id,x,y,o)=>{o=o||{};let s=SPc[id];if(!s){try{s=SPc[id]=sprCanvas(id,'gd'+id,null,32,48);}catch(e){}}if(!s)return;const sc=o.s||2;
+      g.save();g.translate(x,y);if(o.rot)g.rotate(o.rot);g.scale((o.flip?-1:1)*sc,sc);g.globalAlpha=o.a==null?1:o.a;if(o.glow){g.shadowColor=o.glow;g.shadowBlur=o.gb||16;}
+      if(o.clip!=null){g.beginPath();g.rect(-16,-48+o.clip[0],32,o.clip[1]-o.clip[0]);g.clip();}
+      g.drawImage(s,-16,-48);g.restore();},
+    txt:(s,x,y,sz,col,a,sk)=>{if(a<=0)return;g.save();g.globalAlpha=cl(a);g.font='900 '+sz+'px sans-serif';g.textAlign='center';g.textBaseline='middle';g.lineWidth=Math.max(2,sz/6);g.strokeStyle=sk||'#000';g.lineJoin='round';g.strokeText(s,x,y);g.fillStyle=col;g.fillText(s,x,y);g.restore();},
+    star:(x,y,r,col,a)=>{g.save();g.globalAlpha=cl(a);g.fillStyle=col;g.beginPath();for(let i=0;i<16;i++){const R=i%2?r*.4:r,an=i/16*6.283;g.lineTo(x+Math.cos(an)*R,y+Math.sin(an)*R);}g.fill();g.restore();},
+    ring:(x,y,r,col,a,w)=>{g.save();g.globalAlpha=cl(a);g.strokeStyle=col;g.lineWidth=w||2;g.beginPath();g.arc(x,y,Math.max(.1,r),0,6.283);g.stroke();g.restore();},
+    line:(x1,y1,x2,y2,w,col,a)=>{g.save();g.globalAlpha=cl(a);g.strokeStyle=col;g.lineWidth=w;g.lineCap='round';g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();g.restore();},
+    flash:(a,col)=>{if(a<=0)return;g.save();g.globalAlpha=cl(a);g.fillStyle=col||'#fff';g.fillRect(0,0,W,H);g.restore();},
+    glow:(x,y,r,col,a)=>{g.save();g.globalAlpha=cl(a);const gr=g.createRadialGradient(x,y,1,x,y,r);gr.addColorStop(0,col);gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);g.restore();},
+    bg:(c,t,dark)=>{const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,c[0]);gr.addColorStop(1,c[1]);g.fillStyle=gr;g.fillRect(0,0,W,H);
+      for(let i=0;i<26;i++){g.fillStyle='rgba(255,255,255,'+(.15+.25*rnd(i))+')';g.fillRect(rnd(i+9)*W,rnd(i+3)*90,1,1);}
+      g.fillStyle='rgba(0,0,0,.45)';g.fillRect(0,GY,W,H-GY);g.fillStyle='rgba(255,255,255,.12)';g.fillRect(0,GY,W,1);if(dark){g.fillStyle='rgba(0,0,0,'+dark+')';g.fillRect(0,0,W,H);}},
+    petals:(t,col,n,sp)=>{for(let i=0;i<n;i++){const x=(rnd(i)*W+Math.sin(t/700+i)*14+t*(sp||.012)*(i%2?1:.6))%W,y=((rnd(i+50)*H+t*(.02+rnd(i+9)*.03))%(H+10))-5;
+      g.save();g.globalAlpha=.7;g.translate(x,y);g.rotate(t/400+i);g.fillStyle=col;g.beginPath();g.ellipse(0,0,2.4,1.2,0,0,6.283);g.fill();g.restore();}},
+    box:(who,col,line,t0,t,vis)=>{const u=seg(t,t0,t0+260);if(u<=0||vis===false)return;g.save();g.globalAlpha=u;g.fillStyle='rgba(0,0,0,.72)';g.fillRect(14,128,W-28,44);g.strokeStyle=col;g.lineWidth=1;g.strokeRect(14.5,128.5,W-29,43);g.restore();
+      Hh.txt(who,60,136,8,col,u);const n=Math.min(line.length,Math.floor((t-t0-200)/55));if(n>0){g.save();g.globalAlpha=u;g.font='700 9px sans-serif';g.textAlign='left';g.textBaseline='top';g.fillStyle='#fff';const ls=line.split('\n');let c=0;ls.forEach((l,i)=>{const k=Math.max(0,Math.min(l.length,n-c));c+=l.length;g.fillText(l.slice(0,k),22,144+i*12);});g.restore();}}};
+  const t0=performance.now();
+  function frame(){const t=(performance.now()-t0)*(window.__GDSP||1);
+    if(t>=dur){window.removeEventListener('keydown',kb,true);el.remove();res();return;}
+    g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,W,H);
+    try{draw(g,t,Hh);}catch(e){if(!window.__gdE){window.__gdE=String(e)+(e.stack||"").slice(0,300);console.error("GDERR "+window.__gdE);}}
+    g.setTransform(2,0,0,2,0,0);
+    const fo=seg(t,dur-FO,dur);if(fo>0){g.fillStyle='rgba(0,0,0,'+fo+')';g.fillRect(0,0,W,H);}
+    const fi=1-seg(t,0,FI);if(fi>0){g.fillStyle='rgba(0,0,0,'+fi+')';g.fillRect(0,0,W,H);}
+    requestAnimationFrame(frame);}
+  requestAnimationFrame(frame);});}
+
+/* ---------- ① 登場演出 ---------- */
+function gdIntro(){const P=GDC;return gdCV(15200,(g,t,H)=>{
+  const sh=(a,b)=>t>=a&&t<b?(H.rnd(t|0)-.5)*2:0;
+  H.bg(['#10041c','#2a1040'],t);H.petals(t,'#c060ff',26,.01);
+  H.txt('終焉の庭園',160,22,12,'#e8d0ff',H.seg(t,300,900)*(1-H.seg(t,1800,2400)));
+  /* マナ */
+  const m=P.mana,ma=H.seg(t,1500,2000)*(1-H.seg(t,4400,4800));
+  if(ma>0){H.glow(90,80,90,m.a,.5*ma);H.ring(90,100,H.lerp(10,90,H.eo(H.seg(t,1500,2300))),m.b,.6*ma*(1-H.seg(t,1500,2300)),3);
+    for(let i=0;i<14;i++){const an=i/14*6.283+t/900,r=26+H.seg(t,1500,2800)*30;H.star(90+Math.cos(an)*r,98+Math.sin(an)*r*.7,3,i%2?m.a:m.b,ma*.9);}
+    H.spr('mana',lerp0(-60,90,H.eo(H.seg(t,1400,2100))),H.GY,{s:2.3+.04*Math.sin(t/300),a:ma,glow:m.a});
+    H.ev('s1',t,1500,()=>H.snd('chime'));H.box('紫薔薇の邪神　マナ',m.b,'あはっ、来たね！\nボクの庭園、全部 咲かせちゃうよ！',1900,t);}
+  /* マリア */
+  const r=P.maria,ra=H.seg(t,4700,5200)*(1-H.seg(t,7600,8000));
+  if(ra>0){H.glow(160,100,100,'#ff1a3a',.35*ra);
+    for(let i=0;i<8;i++){const y0=((t/6+i*37)%190);H.line(60+i*28+Math.sin(t/300+i)*4,190-y0,60+i*28,190-y0-26,1.4,'#ff3a52',ra*.6);}
+    H.spr('maria0',160,H.GY+(1-H.eo(H.seg(t,4700,5400)))*-18,{s:2.3,a:ra,glow:'#ff3a52'});
+    H.ev('s2',t,4700,()=>{H.snd('warn');});H.box('神呪の継承者　マリア','#ff7a8a','……手加減は しない。\n覚悟は、いいかしら。',5100,t);}
+  /* マラ */
+  const w=P.mara,wa=H.seg(t,7900,8400)*(1-H.seg(t,10500,10900));
+  if(wa>0){H.glow(230,100,90,w.a,.4*wa);for(let k=0;k<4;k++){const u=((t-7900)/1400+k*.25)%1;H.ring(230,H.GY+2,6+u*70,w.b,wa*(1-u)*.7,1.5);}
+    for(let i=0;i<16;i++){const u=((t/1700+rnd1(i))%1);H.star(190+rnd1(i+3)*80,H.GY-u*110,1.6+rnd1(i)*2,'#bff0ff',wa*(1-u));}
+    H.spr('mara',lerp0(380,230,H.eo(H.seg(t,7800,8600))),H.GY,{s:2.3,a:wa,glow:w.a});
+    H.ev('s3',t,7900,()=>H.snd('shatter'));H.box('二代目の水神　マラ',w.b,'……水底へ、ようこそ。\n戻れるとは、限らないけど。',8300,t);}
+  /* 三人 */
+  if(t>=10800){const u=H.seg(t,10800,11600);const z=1+.04*H.seg(t,10800,14600);
+    g.save();g.translate(160,100);g.scale(z,z);g.translate(-160,-100);
+    [['mana',64,P.mana.a],['maria0',160,P.maria.a],['mara',256,P.mara.a]].forEach(([id,x,c],i)=>{H.glow(x,100,60,c,.5*u);H.spr(id,x,H.GY+(1-H.eo(u))*30,{s:1.9,a:u,glow:c});});g.restore();
+    H.ev('s4',t,11800,()=>{H.snd('crit');H.snd('shatter');});
+    const T=H.seg(t,11800,12100);H.flash((1-H.seg(t,11800,12500))*(t>=11800?1:0));
+    H.txt('【終焉の庭園・覚醒】',160+sh(11800,12300)*3,64,15,'#ffffff',T,'#7a20c0');H.txt('三柱、咲き揃う',160,84,10,'#ffd0ff',H.seg(t,12500,13000));
+    if(t>=11800&&t<12300)for(let i=0;i<10;i++)H.line(160,70,160+Math.cos(i*.628)*220,70+Math.sin(i*.628)*220,2,'#fff',(1-H.seg(t,11800,12300))*.8);}
+});}
+const lerp0=(a,b,u)=>a+(b-a)*u,rnd1=i=>{const s=Math.sin(i*12.9898+78.233)*43758.5453;return s-Math.floor(s);};
+
+/* ---------- ② 覚醒演出（三柱それぞれ） ---------- */
+function gdAwakeCine(kind){const P=GDC[kind];
+  const LINE={mana:'……ふふ。ここからが\n本当の 庭園だよ。',maria:'……もう、止まれない。\n止まる つもりも ない。',mara:'……水は 何にでも なれるの。\nあなたたちの 絶望にも。'}[kind];
+  return gdCV(7400,(g,t,H)=>{
+    const ch=H.seg(t,400,2600),boom=2700;
+    H.bg(P.bg,t,.1+.4*(1-ch)*0);
+    if(kind==='mana')H.petals(t,'#c060ff',30,.02);
+    if(kind==='maria')for(let i=0;i<10;i++){H.line(rnd1(i)*320,0,rnd1(i)*320+(rnd1(i+3)-.5)*60,H.GY,1,'#ff3a52',.25+.2*Math.sin(t/120+i));}
+    if(kind==='mara'){const lv=H.GY-H.seg(t,300,2600)*H.GY*.9;g.save();g.globalAlpha=.4;g.fillStyle='#0a4a78';g.fillRect(0,lv,H.W,H.H-lv);g.restore();for(let k=0;k<3;k++){const u=((t/1200)+k/3)%1;H.ring(160,lv,10+u*140,P.b,(1-u)*.5,1.2);}}
+    const sc=1.8+ch*.8+(t>=boom?.1*Math.sin((t-boom)/90):0),shk=t<boom?ch*2.2:0,x=160+(H.rnd(t|0)-.5)*shk,y=H.GY;
+    H.glow(160,100,60+ch*110,P.a,.35+.4*ch);
+    if(t<boom){for(let i=0;i<24;i++){const an=rnd1(i)*6.283,r=lerp0(130,8,((t/900+rnd1(i+2))%1));H.star(160+Math.cos(an)*r,100+Math.sin(an)*r*.7,1.5+rnd1(i)*2.5,i%2?P.a:P.b,ch);}
+      for(let k=0;k<3;k++){const u=((t/700)+k/3)%1;H.ring(160,100,90*(1-u),P.a,ch*u,2);}}
+    let id=P.spr;if(kind==='maria'){const st=t<boom?Math.min(10,Math.floor(ch*11)):10;id='maria'+st;}
+    H.spr(id,x,y,{s:sc,glow:P.a,gb:22+ch*20});
+    H.ev('c1',t,500,()=>H.snd('warn'));H.ev('c2',t,1600,()=>H.snd('chime'));
+    H.ev('bm',t,boom,()=>{H.snd('crit');H.snd('shatter');});
+    if(t>=boom){H.flash(1-H.seg(t,boom,boom+700));
+      for(let i=0;i<14;i++){const an=i/14*6.283+.2;H.line(160,100,160+Math.cos(an)*260*H.seg(t,boom,boom+500),100+Math.sin(an)*260*H.seg(t,boom,boom+500),2.2,P.b,(1-H.seg(t,boom,boom+900))*.8);}
+      H.ring(160,100,H.lerp(10,200,H.eo(H.seg(t,boom,boom+900))),P.a,1-H.seg(t,boom,boom+900),4);
+      H.txt('覚　醒',160,50,28,'#ffffff',H.seg(t,boom+200,boom+450),P.a);
+      H.txt(P.t+'　'+P.n,160,76,10,P.b,H.seg(t,boom+500,boom+800));
+      H.txt('HP以外の ステータスが 2倍',160,93,8,'#ffe9a0',H.seg(t,boom+900,boom+1200));
+      H.box(P.n,P.b,LINE,boom+1200,t);}
+  });}
+
+/* ---------- ③ マリア消滅 ---------- */
+function gdVanish(){const P=GDC.maria;return gdCV(10600,(g,t,H)=>{
+  H.bg(['#0c0a12','#241828'],t,.1);H.petals(t,'#ffffff',22,.006);
+  const d=H.seg(t,5200,8200);
+  H.glow(160,100,70,'#ffffff',.25*(1-d));
+  /* 足元から 粒になって 消える */
+  const S=48;for(let i=0;i<S;i++){const yy=i/S,lim=1-yy;const a=1-H.cl((d*1.6-(yy))*3);
+    if(a>.02)H.spr('maria10',160+(d>0?Math.sin(i+t/80)*d*2:0),H.GY,{s:2.3,a,clip:[i,i+1.3]});}
+  if(d>0){for(let i=0;i<60;i++){const u=((t-5200)/1400+rnd1(i))%1,yy=H.GY-rnd1(i+4)*130*(d*1.4);H.star(140+rnd1(i+9)*40+Math.sin(t/200+i)*6,yy-u*60,1+rnd1(i)*2,i%2?'#ffffff':'#ff7a8a',(1-u)*Math.min(1,d*4)*(1-H.seg(t,8000,9200)));}}
+  H.ev('v0',t,300,()=>H.snd('chime'));H.ev('v1',t,5200,()=>H.snd('curse'));
+  if(t<2600)H.box('マリア','#ff7a8a','……そろそろ、時間ね。',500,t);
+  else if(t<5000)H.box('マリア','#ff7a8a','神呪は、私と一緒に 消えるわ。\n……あなたたちの 勝ち、ね。',2700,t);
+  else if(t>=7600)H.box('マリア','#ff7a8a','……ありがとう。\n久しぶりに、楽しかった。',7700,t);
+  H.txt('マリアが 消滅した……',160,40,11,'#ffd0d8',H.seg(t,8600,9100));
+});}
+
+/* ---------- ④ カウントダウン：10 ---------- */
+function gdCount10(){return gdCV(6400,(g,t,H)=>{
+  const u=H.seg(t,0,4200);
+  H.bg(['#1a0408','#3a0a10'],t,0);
+  /* 時計 */
+  const cx=160,cy=90,R=62;H.ring(cx,cy,R,'#ff5a6a',.9,3);H.ring(cx,cy,R+6,'#ff5a6a',.4,1);
+  for(let i=0;i<12;i++){const an=i/12*6.283-1.5708;H.line(cx+Math.cos(an)*(R-8),cy+Math.sin(an)*(R-8),cx+Math.cos(an)*R,cy+Math.sin(an)*R,2,'#ffd0d0',.9);}
+  const ha=-1.5708+u*u*6.283*5;H.line(cx,cy,cx+Math.cos(ha)*(R-12),cy+Math.sin(ha)*(R-12),2.5,'#ffffff',1);
+  H.line(cx,cy,cx+Math.cos(ha/12)*(R-26),cy+Math.sin(ha/12)*(R-26),3.5,'#ff8a9a',1);
+  H.glow(cx,cy,R*1.6,'#ff2a40',.25+.25*Math.sin(t/110));
+  /* 三柱 */
+  [['mana',60,GDC.mana.a],['maria0',160,GDC.maria.a],['mara',260,GDC.mara.a]].forEach(([id,x,c],i)=>{const s=1.3+u*.9;H.glow(x,130,50*u+10,'#ff2a40',.6*u);H.spr(id,x,H.GY,{s,glow:'#ff2a40',gb:10+u*20,a:.55+.45*u});});
+  H.ev('c0',t,200,()=>H.snd('warn'));
+  for(let k=0;k<10;k++)H.ev('t'+k,t,300+k*380,()=>H.snd('tick'));
+  H.ev('c1',t,4200,()=>{H.snd('crit');H.snd('shatter');});
+  if(t>=4200){H.flash((1-H.seg(t,4200,4800))*.9,'#ff4a5a');
+    H.txt('COUNTDOWN　10',160,40+(H.rnd(t|0)-.5)*3,22,'#ffffff',H.seg(t,4300,4500),'#c01028');
+    H.txt('三柱の 力が 臨界を 超えた',160,128,10,'#ffd0d8',H.seg(t,4700,5000));
+    H.txt('全員　HP以外の ステータスが 3倍',160,144,9,'#ffe9a0',H.seg(t,5000,5300));}
+});}
+
+/* ---------- ⑤ 決着 ---------- */
+function gdFinale(){return gdCV(17200,(g,t,H)=>{
+  H.bg(['#1a1030','#48306a'],t,0);H.petals(t,'#ffb0e8',34,.012);H.petals(t+3000,'#ffffff',12,.006);
+  const u=H.seg(t,300,1800);const X=[64,160,256];
+  [['mana',GDC.mana],['maria0',GDC.maria],['mara',GDC.mara]].forEach(([id,P],i)=>{const a=H.seg(t,300+i*300,1300+i*300);H.glow(X[i],100,50,P.a,.35*a);H.spr(id,X[i],H.GY+(1-H.eo(a))*20,{s:2.0,a,glow:P.a});});
+  if(t<4200)H.box('マナ',GDC.mana.b,'あちゃー、負けちゃった！\n……でも すっごく 楽しかったよ！',1800,t);
+  else if(t<7200)H.box('マリア','#ff7a8a','……強いのね。\n気に入ったわ。',4300,t);
+  else if(t<10200)H.box('マラ',GDC.mara.b,'……あは。届いちゃった。\n水底より 深い 場所まで。',7300,t);
+  else if(t<13000)H.box('マナ',GDC.mana.b,'ねえ、また 庭園で 遊ぼうよ！\nみんなで 咲かせよう！',10300,t);
+  H.ev('f0',t,300,()=>H.snd('chime'));
+  if(t>=13200){H.flash(H.seg(t,13200,13800)*.5,'#fff');H.txt('【終焉の庭園・覚醒】',160,64,14,'#ffffff',H.seg(t,13400,13800),'#7a20c0');H.txt('三柱の 庭園が 静まった',160,86,10,'#ffd0ff',H.seg(t,14000,14500));H.ev('f1',t,13400,()=>H.snd('crit'));}
+});}
+
+/* ---------- ⑥ 大技のカットイン（覚醒後の主要技・各技 4ターンに1回） ---------- */
+const GDCUT={'ヴァイオレット・ペイン':'mana','紫薔薇の嵐':'mana','邪神の囁き':'mana','呪剣・断罪':'maria','呪いの伝染':'maria','神呪の斬界':'maria','大海嘯':'mara','深淵の圧':'mara'};
+function gdCutin(kind,name){const P=GDC[kind];const left=kind==='mara';const id=kind==='maria'?'maria'+Math.min(10,Math.max(0,Math.round((window.__gdCurse||0)/10))):P.spr;
+  return gdCV(1500,(g,t,H)=>{
+    const u=H.seg(t,0,260);H.bg(P.bg,t,0);
+    g.save();g.globalAlpha=.9;g.fillStyle=P.a;g.beginPath();g.moveTo(0,H.H*.3);g.lineTo(H.W,H.H*.12);g.lineTo(H.W,H.H*.88);g.lineTo(0,H.H*.7);g.closePath();g.globalAlpha=.22*u;g.fill();g.restore();
+    for(let i=0;i<22;i++){const y=rnd1(i)*H.H,l=60+rnd1(i+4)*200,x=((t*(1.2+rnd1(i+8))*(left?-1:1)+rnd1(i+2)*400)%(H.W+l*2))-l;H.line(x,y,x+l*(left?-1:1),y-4,1.2,i%2?P.a:P.b,.55*u);}
+    const sx=left?H.lerp(330,205,H.eo(u)):H.lerp(-10,115,H.eo(u));
+    H.glow(sx,90,100,P.a,.6*u);
+    H.spr(id,sx+(t>260?Math.sin(t/60)*1.2:0),H.H+30,{s:5.6,a:u,glow:P.a,gb:26,flip:left});
+    H.ev('ci',t,60,()=>H.snd('cutin'));
+    g.save();g.fillStyle='rgba(0,0,0,.85)';g.fillRect(0,0,H.W,16*u);g.fillRect(0,H.H-16*u,H.W,16*u);g.restore();
+    const tx=left?90:230;const tu=H.seg(t,200,420);
+    H.txt(name,tx+(1-tu)*(left?-60:60),88,name.length>8?13:22,'#ffffff',tu,P.a);
+    H.txt(P.t+'　'+P.n,tx+(1-tu)*(left?-60:60),110,9,P.b,tu);
+    H.flash((1-H.seg(t,0,180))*.9,'#fff');
+  },{fi:0,fo:220});}
+{const _ea=exAtk;exAtk=async function(f,name){
+  if(f&&f.gd&&GDCUT[name]&&B&&!B.end){f.gdCut=f.gdCut||{};const r=B.round;
+    if(f.gdCut[name]==null||r-f.gdCut[name]>=4){f.gdCut[name]=r;window.__gdCurse=f.curse||0;try{await gdCutin(GDCUT[name],name);}catch(e){}}}
+  return _ea.apply(this,arguments);};}
+/* ===== 滅級・第2弾【終焉の庭園・覚醒】マナ＆マリア＆マラ ＋ 神ノ領域:封 ===== */
+TIERN[19]='神ノ領域:封';TMUL[19]=60;GMUL[19]=600;GEMF[19]=9000;GEMR[19]=500;
+const GDK=[['nocap','ダメージ上限無視の無効化','マナ'],['vanish','マリア消滅（神呪進行10ターン）','マリア'],['mana2','マナ2回行動','マナ'],['marahalf','マラ魔法半減','マラ'],
+ ['awaken','覚醒（HP50%・HP以外2倍）','マリア'],['count','カウントダウン（即死に近いほど強化）','マラ'],['shin2','神呪100%で+2回行動','マリア'],['count10','カウントダウン:10（全員 3倍）','マナ']];
+window.GDSEAL={};
+const GS=k=>!!(window.GDSEAL&&GDSEAL[k]);
+const GDLIM=36;
+const gdLive=()=>typeof B!=='undefined'&&B&&B.foes&&!B.end?B.foes.filter(f=>f.gd&&!f.dead):[];
+/* ---------- 封印メニュー（無冠ノ役者と同じ） ---------- */
+async function gdSealMenu(online){
+  PROF.gdSeals=PROF.gdSeals||{};PROF.gdSealOn=PROF.gdSealOn||{};
+  const cur={};GDK.forEach(([k])=>{cur[k]=!online&&!!PROF.gdSeals[k]&&!!PROF.gdSealOn[k];});
+  if(!online&&!GDK.some(([k])=>PROF.gdSeals[k])){window.GDSEAL={};return;}
+  for(;;){
+    const n=GDK.filter(([k])=>cur[k]).length;
+    const opts=[{l:'この設定で 挑む',r:n?n+'個 封印中':'封印なし'}].concat(GDK.map(([k,nm,who])=>{const has=!!PROF.gdSeals[k];
+      return {l:(cur[k]?'【封】':'　　')+nm,r:!has?'未解放（'+who+'）':(cur[k]?'封印中':'有効'),dis:!has};}));
+    const i=await choose('封印の 設定'+(online?'（リーダーの 封印が 使われる）':'')+'\n神ノ領域:封の クリアで 封印が 解放される',opts,{cancel:false});
+    if(i<=0)break;const k=GDK[i-1][0];cur[k]=!cur[k];}
+  if(!online){PROF.gdSealOn={...cur};saveProf();}
+  window.GDSEAL=cur;}
+{const _qr=questReward;questReward=async function(q){
+  const r=await _qr.apply(this,arguments);
+  if(q.gtrial){PROF.gdSeals=PROF.gdSeals||{};const fst=!PROF.gdSeals[q.gtrial];PROF.gdSeals[q.gtrial]=true;saveProf();
+    const S0=GDK.find(x=>x[0]===q.gtrial);
+    if(fst)await say(`★ 封印【${S0[1]}】を 手に入れた！\n（滅級【終焉の庭園・覚醒】の 挑戦前に ON/OFFを 切り替えられる）`,3000);hideMsg();}
+  return r;};}
+
+/* ---------- 敵の定義 ---------- */
+function gdActs(f){
+  if(f.manaB)return GS('mana2')?1:2;
+  if(f.mariaB&&f.shinju)return GS('shin2')?1:3;
+  return 1;}
+function gdAI(base){return async function(f){
+  if(f.mariaB&&f.shinju){
+    const n=gdActs(f);
+    for(let a=0;a<n;a++){for(let i=0;i<(f.shinjuHits||2);i++){if(!alivePty().length||B.end)return;await exAtk(f,'神呪の斬界','all',.35);}}
+    return;}
+  const n=gdActs(f);
+  for(let i=0;i<n;i++){if(!alivePty().length||f.dead||f.downed||B.end)break;await base(f);}};}
+const gdMk=(id,base)=>{FOES[id]={...FOES[base],gd:true,enrage:0,enrageFn:undefined,ai:gdAI(FOES[base].ai)};};
+gdMk('gdMana','qmanaB');gdMk('gdMaria','qmariaB');gdMk('gdMara','qmaraB');
+FOES.gdMana.awake=true;
+
+/* ---------- ギミック：ダメージ上限無視の無効化 ---------- */
+{const _dc=window.DMGCAP;window.DMGCAP=function(m,s,f,r){
+  if(f&&f.gd&&!GS('nocap')){
+    if(f.hitHP){r.d=1;return;}
+    if(f.capPct){const cap=Math.max(1,Math.round(f.mhp*f.capPct*(gfx(m,'capbreak')?1.5:1)));if(r.d>cap){r.d=cap;r.capped=true;}}
+    return;}
+  return _dc(m,s,f,r);};}
+{const _mp=mrPierce;mrPierce=function(m){if(gdLive().length&&!GS('nocap'))return false;return _mp(m);};}
+/* マラ：魔法ダメージ半減 */
+DMGMODS.push((m,s,f,r)=>{if(f&&f.gd&&f.maraB&&!GS('marahalf')&&s&&s.k==='mag')r.d=Math.round(r.d/2);});
+/* 覚醒：HP50%で 絶対に 止まる */
+DMGMODS.push((m,s,f,r)=>{if(f&&f.gd&&!f.gdAw&&!GS('awaken')){const fl=Math.floor(f.mhp*.5);if(f.hp-r.d<fl)r.d=Math.max(0,f.hp-fl);}});
+async function gdAwake(){
+  for(const f of gdLive()){
+    if(f.gdAw||GS('awaken')||f.hp>Math.floor(f.mhp*.5))continue;
+    f.gdAw=true;['atk','def','mag','agi'].forEach(k=>{if(f[k])f[k]=Math.round(f[k]*2);});
+    try{shakeScreen();if(typeof fxSnd==='function')fxSnd('crit');}catch(e){}
+
+    await gdAwakeCine(f.manaB?'mana':f.mariaB?'maria':'mara');}}
+ACT_POST.push(async()=>{if(!B.end)await gdAwake();});
+ROUND_END.push(async b=>{if(!b.end)await gdAwake();});
+/* カウントダウン：即死まで近づくほど 強くなる。10を切ると 3倍 */
+{const _hp=hitParty;hitParty=function(f,m,mult){
+  if(f&&f.gd&&!GS('count')&&B){const left=Math.max(0,GDLIM-B.round);mult*=1+1.6*Math.pow(1-left/GDLIM,2);}
+  return _hp.call(this,f,m,mult);};}
+ROUND_START.unshift(async b=>{if(b.round===1&&b.foes.filter(f=>f.gd).length>=3)await gdIntro();});
+ROUND_START.push(async b=>{
+  const L=b.foes.filter(f=>f.gd&&!f.dead);if(!L.length)return;
+  if(b.round===1){
+    L.forEach(f=>{if(f.mariaB&&GS('vanish'))f.shinjuT=3;});
+    const T=[];if(!GS('nocap'))T.push('ダメージ上限無視を 無効化（神域・連携技でも 上限は 破れない）');
+    if(!GS('awaken'))T.push('覚醒：HP50%で 必ず 止まり、HP以外が 2倍');
+    if(!GS('mana2'))T.push('マナ：2回行動');if(!GS('marahalf'))T.push('マラ：魔法ダメージ 半減');
+    if(!GS('vanish'))T.push('マリア：神呪100%の 10ターン後に 消滅（その間 無敵）');if(!GS('shin2'))T.push('神呪100%で マリアが +2回行動');
+    T.push(GDLIM+'ターンで 即死'+(GS('count')?'':'。近づくほど 強くなる')+(GS('count10')?'':'\n残り10を 切ると 全員 HP以外 3倍'));
+    await say('【終焉の庭園・覚醒】\n・'+T.join('\n・'),5600);}
+  const left=GDLIM-b.round;
+  if(left===9&&!GS('count10')&&!L[0].gdC10){
+    L.forEach(f=>{f.gdC10=true;['atk','def','mag','agi'].forEach(k=>{if(f[k])f[k]=Math.round(f[k]*3);});});
+    try{shakeScreen();}catch(e){}
+    await gdCount10();}});
+ROUND_END.push(async b=>{
+  if(b.end||!gdLive().length)return;const left=GDLIM-b.round;
+  if(left>0&&left<=3)await say(`終焉まで あと ${left}ターン……！`,1100);
+  if(left<=0){await say('時が 尽きた。\n庭園の 全てが 白く 染まっていく——',2000);await exWipe('——即死。');}});
+ROUND_END.unshift(async b=>{for(const f of b.foes){if(f.gd&&f.mariaB&&f.shinju&&!f.dead&&!f.gdVan&&b.round>=f.shinjuEnd){f.gdVan=true;await gdVanish();}}});
+/* 残りターンの表示 */
+{const _df=drawFoe;drawFoe=function(f,x,y,t){_df(f,x,y,t);
+  if(!f.gd||f.dead||!B||B.end)return;const first=B.foes.find(q=>q.gd&&!q.dead);if(first!==f)return;
+  const left=Math.max(0,GDLIM-B.round);g.font='bold 9px sans-serif';g.textAlign='center';g.lineWidth=3;g.strokeStyle='#000';const s='即死まで '+left;g.strokeText(s,x,y+40);g.fillStyle=left<=3?'#ff7070':left<10?'#ffa070':'#ffd870';g.fillText(s,x,y+40);g.textAlign='left';};}
+
+/* ---------- クエスト ---------- */
+const GR12=120000;
+const gdX={
+ mana:{capPct:.005,pctDmg:.32,markEvery:2,markN:3,budTh:[.8,.6,.4,.2],budHP:[8,10,12,14],rage:1.2},
+ maria:{capPct:.005,pctDmg:.3,curseStep:15,rageK:1.6,shinjuT:10,shinjuHits:2,counterEvery:3},
+ mara:{capPct:.008,pctDmg:.22}};
+const gdP={mana:{x:100,y:102},maria:{x:152,y:90},mara:{x:206,y:102}};
+exQuest({id:'gd1',name:'【終焉の庭園・覚醒】',tier:10,lv:9999,rec:200000,alias:'fort',bg:'hell',gd:true,
+  desc:'終焉の庭園に、三人の 神が 咲き揃う。\n紫薔薇・神呪・水底。全ての 掟が 牙を むく。\n報酬は 称号だけ。\n（最初から ボス戦。神ノ領域:封で ギミックを 封印できる）',
+  waves:[{say:'庭園の 奥で、三つの 影が 振り向いた。\nマナ「あはっ、来たね！」\nマリア「……手加減は しない」\nマラ「……水底へ、ようこそ」',lv:9999,boss:true,
+    foes:[['gdMana',{hp:9,atk:3.4,x:{...gdX.mana,pos:gdP.mana}}],['gdMaria',{hp:9,atk:3.4,x:{...gdX.maria,pos:gdP.maria}}],['gdMara',{hp:8,atk:3.2,x:{...gdX.mara,pos:gdP.mara}}]]}]});
+{const T=(id,key,name,desc,say0,foes)=>exQuest({id,name,tier:19,lv:9999,rec:GR12,alias:'fort',bg:'hell',gtrial:key,desc:desc+'\n（クリアで 封印【'+GDK.find(x=>x[0]===key)[1]+'】を 解放）',waves:[{say:say0,lv:9999,boss:true,foes}]});
+ const M=(o)=>['gdMana',{hp:4.5,atk:2.7,x:{...gdX.mana,pos:{x:170,y:96},...o}}],R=(o)=>['gdMaria',{hp:4.5,atk:2.7,x:{...gdX.maria,pos:{x:170,y:96},...o}}],A=(o)=>['gdMara',{hp:4.2,atk:2.6,x:{...gdX.mara,pos:{x:170,y:96},...o}}];
+ T('gs1','nocap','【封・壱】上限を 縛る薔薇','上限を 破る 力すら 許さない 紫薔薇の 神。','紫薔薇が 全ての 抜け道を ふさいでいく。\nマナ「ズルは、ナシだよ？」',[M({capPct:.0035})]);
+ T('gs2','vanish','【封・弐】消えゆく継承者','神呪が 長く 続く 継承者。10ターン 耐えれば 彼女は 消える。','白い 髪が 風に ほどけていく。\nマリア「……最後まで、付き合って」',[R({curseStep:20})]);
+ T('gs3','mana2','【封・参】二度咲く邪神','一度の 手番に 二度 咲く 邪神。','紫の 香りが 二重に 重なる。\nマナ「ボク、2回 動けるんだ！」',[M({})]);
+ T('gs4','marahalf','【封・肆】魔を 沈める水底','魔法が 水底に 吸われていく。','水が 魔力を 呑んでいく。\nマラ「……魔法は、濡れると 弱いの」',[A({})]);
+ T('gs5','awaken','【封・伍】覚醒の継承者','HP50%で 覚醒する 継承者。','髪の 白が 黒に 反転する 予感がする。\nマリア「……まだ、本気じゃ ないわ」',[R({})]);
+ T('gs6','count','【封・陸】迫る水位','時が 迫るほど 水位が 上がる。','水位が 少しずつ 上がっていく。\nマラ「……時間は、こっちの 味方だよ」',[A({})]);
+ T('gs7','shin2','【封・漆】三重の斬界','神呪が 満ちると 三度 動く 継承者。','神呪の 残像が 三つに 割れた。\nマリア「……見えるかしら」',[R({curseStep:22,shinjuT:5})]);
+ T('gs8','count10','【封・捌】臨界の庭園','残り10ターンで 全てが 3倍になる 庭園。','庭園の 時計が 刻み始めた。\nマナ「カウントダウン、始めちゃうよ！」',[M({})]);}
+/* 実行：封印の反映 */
+{const _rq=runQuest;runQuest=async function(q,party,online,me){
+  if(q.gtrial){window.GDSEAL=Object.fromEntries(GDK.map(([k])=>[k,k!==q.gtrial]));try{return await _rq.apply(this,arguments);}finally{window.GDSEAL={};}}
+  if(!q.gd)return _rq.apply(this,arguments);
+  QR.q=q;QR.failed=false;QR.mb=0;QR.mfl=0;questState(party);
+  $('title').hidden=true;setHeader('クエスト　'+q.name);updateParty();scene('black',[]);S.busy=true;
+  await card(['滅級クエスト',q.name,'推奨 '+lvTxt(q.rec)],2600);hideMsg();
+  await gdSealMenu(online);hideMsg();
+  try{await qWave(0);}finally{}
+  window.GDSEAL=window.GDSEAL||{};
+  hideMsg();
+  if(QR.failed){await say('……庭園は、まだ 咲いている。\n（敗北）');hideMsg();window.GDSEAL={};return {ok:false};}
+  PROF.done[q.id]=(PROF.done[q.id]||0)+1;saveProf();
+  await gdFinale();
+  const L=['三柱の 庭園が 静まった——。','称号【咲き終えし庭の主】を 手に入れた！'];
+  await say(L.join('\n'),3000);hideMsg();window.GDSEAL={};return {ok:true,res:L};};}
+TITLES.push(['gd1','咲き終えし庭の主','滅級【終焉の庭園・覚醒】を クリア',()=>D_('gd1'),1],
+ ['gdseal','神ノ領域を 封じし者','神ノ領域:封を すべて クリア',()=>GDK.filter(([k])=>PROF.gdSeals&&PROF.gdSeals[k]).length,8]);
+/* ===== 冒険者ランク：初回クリアごとに【踏破ポイント】→ ランクアップで 全員の能力が 永続アップ ===== */
+const ADV_MAX=50,ADV_PER=.004;
+const advOk=q=>q&&q.tier>0&&![5,6,10,11,19].includes(q.tier)&&!q.recruit&&!q.exDrop&&!q.uniq&&!q.raid&&!q.leg&&!q.gd&&!q.gtrial&&!q.seal&&!q.hidden;
+const advPts=q=>Math.max(1,Math.round(Math.log10(Math.max(10,q.rec||q.lv||10))*2-1));
+const advAll=()=>QUESTS.filter(advOk);
+const advTotal=()=>advAll().reduce((a,q)=>a+advPts(q),0);
+const advNeed=r=>Math.round(advTotal()*Math.pow(r/ADV_MAX,1.25));
+let _advC=null;
+function advInit(){
+  if(!PROF)return;PROF.advGot=PROF.advGot||{};
+  if(!PROF.advInit){PROF.advInit=1;advAll().forEach(q=>{if(PROF.done&&PROF.done[q.id]&&!PROF.advGot[q.id])PROF.advGot[q.id]=1;});saveProf&&saveProf();}}
+function advPoints(){advInit();let s=0;advAll().forEach(q=>{if(PROF.advGot[q.id])s+=advPts(q);});return s;}
+function advRank(){const p=advPoints();let r=0;while(r<ADV_MAX&&p>=advNeed(r+1))r++;return r;}
+let _ar=0,_arT=0;
+const advRankC=()=>{const t=Date.now();if(t-_arT>1500){try{_ar=advRank();}catch(e){_ar=0;}_arT=t;}return _ar;};
+STATMODS.push((m,k,v)=>{
+  if(!m||!S||!S.party||!S.party.includes(m)||!(k==='hp'||k==='atk'||k==='def'||k==='mag'||k==='agi'))return v;
+  const r=advRankC();return r?Math.round(v*(1+ADV_PER*r)):v;});
+{const _qr=questReward;questReward=async function(q,online,me){
+  advInit();const first=advOk(q)&&!PROF.advGot[q.id]&&!PROF.done[q.id];
+  const r=await _qr.apply(this,arguments);
+  if(!first)return r;
+  const r0=advRank();PROF.advGot[q.id]=1;saveProf();_arT=0;const r1=advRank(),p=advPoints(),pt=advPts(q);
+  const L=['★ 初回クリア！ 踏破ポイント +'+pt];
+  if(r1>r0){L.push('','★★ 冒険者ランク '+r0+' → '+r1+'！','全員の 能力が 永続で +'+(r1*ADV_PER*100).toFixed(1)+'% になった！');}
+  else L.push('冒険者ランク '+r1+'　（次まで あと '+Math.max(0,advNeed(r1+1)-p)+'pt）');
+  await say(L.join('\n'),r1>r0?3600:2200);hideMsg();return r;};}
+[10,20,30,40,50].forEach(n=>TITLES.push(['adv'+n,'冒険者ランク'+n,'全クエスト踏破で 冒険者ランク'+n+' に到達',()=>{try{return advRank();}catch(e){return 0;}},n]));
 showTitle();requestAnimationFrame(frame);
 </script>
