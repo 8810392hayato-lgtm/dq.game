@@ -8156,10 +8156,10 @@ const profParty=ids=>ids.map(id=>({id,lv:PROF.chars[id].lv,exp:PROF.chars[id].ex
 async function questMenu(){
   for(;;){
     menuCtx();await loginBonus();ensureDaily();await showMsgs();await bakRemind();
-    const QO=[{l:'クエストに出る',r:'★おすすめ有'},{l:'修行場',r:'経験値かせぎ・メタル出現'},{l:'日課：師範の特訓',r:PROF.daily.dx===todayStr()?'受取済み':'★初回ボーナス'},{l:'ガチャ',r:'ジェム'+PROF.gems},{l:'無限回廊',r:'最高'+(((PROF.inf||{}).best)|0)+'階'},{l:'装備'},{l:'工房',r:'強化・合成・売却'},{l:'ショップ',r:'道具'},{l:'図鑑'},{l:'ファンルーム',r:'紹介・おまけ・クイズ'},{l:'称号・実績',r:(typeof titleSummary==='function'?titleSummary():'')},{l:'ステータス'},{l:'スキル強化',r:'ジェムでLv20まで'},{l:'きせかえ',r:'クエストで衣装が増える'},{l:'バックアップ',r:'自動保存から戻す'},{l:'データの書き出し'},{l:'データの読み込み'},{l:'コマンド入力'},{l:'タイトルへ'}];if(!dbgUnlocked())QO.splice(QO.findIndex(o=>o.l==='コマンド入力'),1);
-    const i0=await choose(`クエスト・育成　所持金${PROF.gold}G　${PROF.clear7?'Lv9999から 転生できる':'Lv上限'+profCap()}`+(PROF.title&&typeof titleName==='function'?'\n'+titleName(PROF.title):''),QO,{cancel:false});const lab=QO[i0]?QO[i0].l:'';const ORD=['クエストに出る','修行場','日課：師範の特訓','ガチャ','無限回廊','装備','工房','図鑑','称号・実績','ステータス','データの書き出し','データの読み込み','コマンド入力'];const i=lab==='スキル強化'?93:lab==='きせかえ'?94:lab==='バックアップ'?95:lab==='ファンルーム'?96:lab==='ショップ'?97:lab==='タイトルへ'?99:ORD.indexOf(lab);
+    const QO=[{l:'クエストに出る',r:'★おすすめ有'},{l:'修行場',r:'経験値かせぎ・メタル出現'},{l:'日課：師範の特訓',r:PROF.daily.dx===todayStr()?'受取済み':'★初回ボーナス'},{l:'ガチャ',r:'ジェム'+PROF.gems},{l:'無限回廊',r:'最高'+(((PROF.inf||{}).best)|0)+'階'},{l:'装備'},{l:'工房',r:'強化・合成・売却'},{l:'ショップ',r:'道具'},{l:'図鑑'},{l:'ファンルーム',r:'紹介・おまけ・クイズ'},{l:'称号・実績',r:(typeof titleSummary==='function'?titleSummary():'')},{l:'ステータス'},{l:'スキル強化',r:'ジェムでLv20まで'},{l:'推し絆',r:'絆Lv・育成ツリー'},{l:'きせかえ',r:'クエストで衣装が増える'},{l:'バックアップ',r:'自動保存から戻す'},{l:'データの書き出し'},{l:'データの読み込み'},{l:'コマンド入力'},{l:'タイトルへ'}];if(!dbgUnlocked())QO.splice(QO.findIndex(o=>o.l==='コマンド入力'),1);
+    const i0=await choose(`クエスト・育成　所持金${PROF.gold}G　${PROF.clear7?'Lv9999から 転生できる':'Lv上限'+profCap()}`+(PROF.title&&typeof titleName==='function'?'\n'+titleName(PROF.title):''),QO,{cancel:false});const lab=QO[i0]?QO[i0].l:'';const ORD=['クエストに出る','修行場','日課：師範の特訓','ガチャ','無限回廊','装備','工房','図鑑','称号・実績','ステータス','データの書き出し','データの読み込み','コマンド入力'];const i=lab==='推し絆'?92:lab==='スキル強化'?93:lab==='きせかえ'?94:lab==='バックアップ'?95:lab==='ファンルーム'?96:lab==='ショップ'?97:lab==='タイトルへ'?99:ORD.indexOf(lab);
     if(i===0){
-      const TL=[1,2,3,4,8,11,13,14,15,16,17,18,12,10,19].filter(n=>QUESTS.some(x=>x.tier===n));
+      const TL=[1,2,3,4,8,11,13,14,15,16,17,18,12,10,19,20].filter(n=>QUESTS.some(x=>x.tier===n));
       const RQ=(PROF.recentQ||[]).map(id=>QUESTS.find(x=>x.id===id)).filter(Boolean).slice(0,3);
       const t=await choose('難易度'+(RQ.length?'　（★は 最近 遊んだクエスト）':''),RQ.map(q=>({l:'★ '+q.name,r:TIERN[q.tier]})).concat(TL.map(n=>({l:TIERN[n],r:(()=>{const L=QUESTS.filter(x=>x.tier===n);const d=L.filter(x=>PROF.done[x.id]).length;return d+'/'+L.length+' クリア';})()}))));if(t<0)continue;
       let q;
@@ -8190,6 +8190,7 @@ async function questMenu(){
     else if(i===12)await dbgPanel();
     else if(i===97)await questShop();
     else if(i===96)await fanMenu();
+    else if(i===92)await osMenu();
     else if(i===93)await sklvMenu();
     else if(i===94)await skinMenu();
     else if(i===95)await bakMenu();
@@ -8435,6 +8436,7 @@ daily reset / login reset … 日替わり・ログボをリセット
 list q|chars|inv … 一覧表示
 save / reset prof … 保存 / プロフィール初期化
 status … 現在のデータ概要
+oshi <キャラID> <Lv> … 推し絆Lvを設定（例: oshi mag 100）
 reserve on|off … 【控え】（4人＋控え1人）を 解放／ロック
 quadskip on|off … マグ・げらりん・コジロー・カキウメの連携技演出を スキップ可能に（ソロ限定。通常プレイは右上ボタン／オート・カスタムオートは自動スキップ）`;
 function dbgRun(line,out){
@@ -8484,6 +8486,7 @@ function dbgRun(line,out){
   else if(c==='save'){saveProf();P('保存した');}
   else if(c==='reset'){if(a[1]==='prof'&&a[2]==='yes'){PROF=newProf();saveProf();P('プロフィールを初期化した');}else P('本当に初期化するなら: reset prof yes');}
   else if(c==='reserve'){const on=a[1]!=='off';PROF.reserveOn=on;saveProf();P('【控え】 '+(on?'解放した（パーティ編成のあとで 控えを選べる）':'ロックした'));}
+  else if(c==='oshi'){const id=a[1],lv=Math.max(0,Math.min(OS_MAX,+a[2]||0));if(!PNAME[id]){P('キャラID不明: '+id);}else{let x=0;for(let l=0;l<lv;l++)x+=OS_NEED(l);osD(id).xp=x;_osc={};saveProf();P(PNAME[id]+'の絆Lvを '+lv+' にした');}}
   else if(c==='quadskip'){const on=a[1]==='on',off=a[1]==='off';if(!on&&!off){P('四重奏スキップ: '+(localStorage.getItem('dq-quadskip')==='1'?'ON':'OFF')+'\n使い方: quadskip on|off（ソロ限定。通常はスキップボタン、オート・カスタムオートは自動スキップ）');return;}
     try{localStorage.setItem('dq-quadskip',on?'1':'0');}catch(e){}P('四重奏スキップ '+(on?'ON':'OFF'));}
   else P('不明なコマンド: '+c+'（helpで一覧）');
@@ -13677,7 +13680,7 @@ async function fanTerms(){
   }
 }
 /* ===== 自動バックアップ ===== */
-const BAKK='dq-bak-v1',BAK_GAP=20*60*1000,BAK_KEEP=3,REMIND_DAYS=7;
+const BAKK='dq-bak-v1',BAK_GAP=20*60*1000,BAK_KEEP=3,REMIND_DAYS=1;
 function bakList(){try{const j=JSON.parse(localStorage.getItem(BAKK)||'[]');return Array.isArray(j)?j:[];}catch(e){return [];}}
 function bakWrite(l){for(;;){try{localStorage.setItem(BAKK,JSON.stringify(l));return true;}catch(e){if(l.length<=1)return false;l=l.slice(0,l.length-1);}}}
 function bakSum(){const lv=Math.max(0,...Object.values(PROF.chars||{}).map(c=>c.lv|0));return `最高Lv${lv}　${PROF.gold|0}G　装備${(PROF.inv||[]).length}個　第${PROF.reach|0}章まで`;}
@@ -17497,7 +17500,7 @@ TITLES.push(['gd1','咲き終えし庭の主','滅級【終焉の庭園・覚醒
  ['gdseal','神ノ領域を 封じし者','神ノ領域:封を すべて クリア',()=>GDK.filter(([k])=>PROF.gdSeals&&PROF.gdSeals[k]).length,8]);
 /* ===== 冒険者ランク：初回クリアごとに【踏破ポイント】→ ランクアップで 全員の能力が 永続アップ ===== */
 const ADV_MAX=50,ADV_PER=.004;
-const advOk=q=>q&&q.tier>0&&![5,6,10,11,19].includes(q.tier)&&!q.recruit&&!q.exDrop&&!q.uniq&&!q.raid&&!q.leg&&!q.gd&&!q.gtrial&&!q.seal&&!q.hidden;
+const advOk=q=>q&&q.tier>0&&![5,6,10,11,19,20].includes(q.tier)&&!q.recruit&&!q.exDrop&&!q.uniq&&!q.raid&&!q.leg&&!q.gd&&!q.gtrial&&!q.seal&&!q.hidden;
 const advPts=q=>Math.max(1,Math.round(Math.log10(Math.max(10,q.rec||q.lv||10))*2-1));
 const advAll=()=>QUESTS.filter(advOk);
 const advTotal=()=>advAll().reduce((a,q)=>a+advPts(q),0);
@@ -17585,6 +17588,118 @@ async function caSetup(ids){
       if(n===4)break;}
     if(seq.length){PROF.cauto[id]=seq;saveProf();await say((PNAME[id]||id)+'：'+caSum(id)+'\nをくりかえす。',1400);}
   }}
+/* ===== 【推しを最強に】推し絆：絆Lv／育成ツリー／推し限定の称号・演出／推し専用の周回クエスト ===== */
+TIERN[20]='推しの絆';TMUL[20]=40;GMUL[20]=300;GEMF[20]=3000;GEMR[20]=200;
+const OS_MAX=100,OS_NEED=l=>30+6*l;
+const OS_TREE=[
+ ['pow','攻魔の誓い','こうげき・まりょくが +2%／Lv',20,0],
+ ['guard','守りの誓い','ぼうぎょが +3%／Lv',15,0],
+ ['vit','命の誓い','さいだいHPが +3%／Lv',20,0],
+ ['swift','疾風の誓い','すばやさが +2%／Lv',15,0],
+ ['soul','推し極意','与えるダメージが +3%／Lv（絆Lv50から）',10,50]];
+const osD=id=>{PROF.oshi=PROF.oshi||{};return PROF.oshi[id]=PROF.oshi[id]||{xp:0,tree:{},ms:0};};
+const osLv=id=>{let x=osD(id).xp,l=0;while(l<OS_MAX&&x>=OS_NEED(l)){x-=OS_NEED(l);l++;}return l;};
+const osNext=id=>{let x=osD(id).xp,l=0;while(l<OS_MAX&&x>=OS_NEED(l)){x-=OS_NEED(l);l++;}return l>=OS_MAX?0:OS_NEED(l)-x;};
+const osSpent=id=>Object.values(osD(id).tree).reduce((a,b)=>a+(b|0),0);
+const osPts=id=>Math.max(0,osLv(id)-osSpent(id));
+const osT=(id,k)=>osD(id).tree[k]|0;
+const osK=id=>PROF.oshiMain===id?1.5:1;
+let _osc={};const osLvC=id=>{const t=Date.now(),c=_osc[id];if(c&&t-c[0]<1500)return c[1];const v=osLv(id);_osc[id]=[t,v];return v;};
+const osIn=m=>m&&S&&((S.party&&S.party.includes(m))||S.reserve===m);
+STATMODS.push((m,k,v)=>{
+  if(!osIn(m)||!PROF.oshi||!PROF.oshi[m.id])return v;
+  const L=osLvC(m.id);if(!L)return v;const K=osK(m.id);let r=.004*L;
+  if(k==='atk'||k==='mag')r+=.02*osT(m.id,'pow');
+  if(k==='def')r+=.03*osT(m.id,'guard');
+  if(k==='hp')r+=.03*osT(m.id,'vit');
+  if(k==='agi')r+=.02*osT(m.id,'swift');
+  return Math.round(v*(1+r*K));});
+DMGMODS.push((m,s,f,r)=>{if(!osIn(m)||!PROF.oshi||!PROF.oshi[m.id])return;const n=osT(m.id,'soul');if(n&&osLvC(m.id)>=50)r.d=Math.round(r.d*(1+.03*n*osK(m.id)));});
+
+/* ---- 演出：絆Lvの節目 ---- */
+const OS_MS=[[25,'ここから、本当の旅が始まる。'],[50,'背中を 預けられる。\nそれが 何より 嬉しい。'],[75,'どんな夜も、\n君となら 越えていける。'],[100,'君は 私の たった一人の 推し。\nこれからも、ずっと。']];
+const OS_COL={mag:'#7a8cff',rei:'#8ce08c',mamya:'#ff8a8a',toki:'#ffb060',noa:'#e0e0ff',lutra:'#6fd0c0',lilith:'#ff5a7a',alfard:'#ffd060',clarice:'#bfe6ff',netto:'#ffa0e0',zolgana:'#c07040',zolrina:'#ff7050',lishia:'#b0f0a0'};
+function osScene(id,lv){const col=OS_COL[id]||'#ffd0f0',big=lv>=100,line=(OS_MS.find(x=>x[0]===lv)||OS_MS[0])[1],n=PNAME[id];
+  return gdCV(big?9600:6400,(g,t,H)=>{
+    H.bg(['#10081c','#2a1448'],t);H.petals(t,col,big?40:22,.012);
+    const a=H.seg(t,300,900);
+    H.glow(160,92,100+30*Math.sin(t/300),col,.45*a);
+    H.ring(160,100,H.lerp(10,110,H.eo(H.seg(t,500,1700))),col,.7*(1-H.seg(t,500,1700)),3);
+    for(let i=0;i<(big?18:10);i++){const an=i/(big?18:10)*6.283+t/1200,r=30+H.seg(t,600,2200)*34;H.star(160+Math.cos(an)*r,96+Math.sin(an)*r*.6,3,i%2?col:'#fff',a*.85);}
+    H.spr(id,H.lerp(-40,160,H.eo(H.seg(t,300,1300))),H.GY,{s:2.4+.04*Math.sin(t/260),a:a,glow:col});
+    H.txt('絆 Lv'+lv,160,22,big?16:13,'#fff',H.seg(t,900,1400));
+    H.txt(n+'との 絆',160,40,9,col,H.seg(t,1200,1700));
+    H.ev('c',t,500,()=>H.snd('chime'));
+    H.box(n,col,line,2100,t);
+    if(big){const u=H.seg(t,6200,6900);H.flash(.5*u*(1-H.seg(t,6900,7400)),'#fff');H.txt('永遠の推し',160,90,18,'#fff',H.seg(t,6900,7400),col);H.txt(n,160,112,10,col,H.seg(t,7200,7800));}
+  });}
+
+/* ---- 絆XPの獲得 ---- */
+function osGain(id,x){const d=osD(id),l0=osLv(id);d.xp+=Math.round(x*(PROF.oshiMain===id?3:1));_osc={};return [l0,osLv(id)];}
+{const _qr=questReward;questReward=async function(q,online,me){
+  const r=await _qr.apply(this,arguments);
+  if(online||!q)return r;
+  try{
+    const ids=S.party.map(m=>m.id);if(S.reserve&&!ids.includes(S.reserve.id))ids.push(S.reserve.id);
+    const base=q.tier>=13?30:q.tier>=8?20:10,ups=[];
+    ids.forEach(id=>{const x=q.oshi===id?(q.oshiX||300):base;const [a,b]=osGain(id,x);if(b>a)ups.push([id,a,b]);});
+    saveProf();
+    if(!(window.__FARM||window.__AUTO)){
+      for(const [id,a,b] of ups){
+        await say(`♥ ${PNAME[id]}との 絆が 上がった！\n絆Lv ${a} → ${b}　（育成ポイント ${osPts(id)}）`,1800);hideMsg();
+        const ms=OS_MS.map(x=>x[0]).filter(v=>a<v&&b>=v).pop();
+        if(ms){const d=osD(id);d.ms=Math.max(d.ms|0,ms);saveProf();await osScene(id,ms);}
+      }
+    }else ups.forEach(([id,a,b])=>{const d=osD(id),ms=OS_MS.map(x=>x[0]).filter(v=>a<v&&b>=v).pop();if(ms)d.ms=Math.max(d.ms|0,ms);});
+  }catch(e){}
+  return r;};}
+
+/* ---- 称号 ---- */
+PCHARS.forEach(id=>{[[30,'の理解者','絆Lv30'],[60,'の相棒','絆Lv60'],[100,'・永遠の推し','絆Lv100']].forEach(([lv,suf,d])=>{
+  TITLES.push(['osh'+id+lv,PNAME[id]+suf,PNAME[id]+'との'+d+'に 到達',()=>{try{return osLv(id);}catch(e){return 0;}},lv]);});});
+TITLES.push(['oshmain','推し活の民','【推し】を 決めて 絆Lv50 に 到達',()=>{try{return PROF.oshiMain?osLv(PROF.oshiMain):0;}catch(e){return 0;}},50]);
+
+/* ---- 推し専用クエスト ---- */
+PCHARS.forEach(id=>{
+  const n=PNAME[id];
+  FOES['osh_'+id]={...UB,n:n+'の影',k:'knight',spr:id,col:OS_COL[id]||'#cccccc',pctDmg:.08,regen:0,moves:[
+    {n:'影の一閃',k:'one',m:1.5,w:4},{n:'追憶の連撃',k:'multi',n2:4,m:.75,w:4},{n:'揺らぐ記憶',k:'all',m:1.05,w:3},{n:'核心を突く',k:'weak',m:1.9,w:2},
+    {n:'もう一人の自分',k:'all',m:1.7,w:2,cond:f=>f.hp<f.mhp*.5}]};
+  [['1','【推し】'+n+'との 約束',30000,2.2,1.6,'影が 静かに 立ちはだかる。\n「——ねえ、君は 私を どれだけ 知ってる？」',150],
+   ['2','【推し・極】'+n+'との 絆の果て',90000,5,2.4,'影の 瞳に 光が 宿る。\n「全部、見せて。君と 歩いた 全部を」',500]].forEach(([k,nm,rec,hp,atk,sy,xp])=>{
+    exQuest({id:'os'+k+'_'+id,name:nm,tier:20,lv:9999,rec,alias:'fort',bg:'hell',oshi:id,oshiX:xp,
+      desc:n+'の影との 戦い。\n'+n+'を パーティに 入れて クリアすると 絆が 大きく 上がる（+'+xp+'）。\n（【推し】に 設定した キャラは 絆が 3倍）',
+      waves:[{say:sy,lv:9999,boss:true,foes:[['osh_'+id,{hp,atk}]]}]});});
+});
+
+/* ---- メニュー ---- */
+async function osTree(id){
+  for(;;){
+    const opts=OS_TREE.map(([k,nm,ds,mx,rq])=>({l:nm+'　'+osT(id,k)+'/'+mx,r:(rq&&osLv(id)<rq)?'絆Lv'+rq+'で解放':ds}));
+    opts.push({l:'ポイントを リセット',r:'無料'});
+    const i=await choose(PNAME[id]+'の 育成ツリー　残りポイント '+osPts(id)+(PROF.oshiMain===id?'\n（推し補正：効果が 1.5倍）':''),opts);if(i<0)return;
+    if(i===OS_TREE.length){osD(id).tree={};saveProf();continue;}
+    const [k,nm,ds,mx,rq]=OS_TREE[i];
+    if(rq&&osLv(id)<rq){await say('絆Lv'+rq+'で 解放される。',900);hideMsg();continue;}
+    if(osPts(id)<=0){await say('育成ポイントが 足りない。\n（絆Lvが 1上がるごとに +1）',1200);hideMsg();continue;}
+    if(osT(id,k)>=mx){await say('これ以上 伸ばせない。',900);hideMsg();continue;}
+    osD(id).tree[k]=osT(id,k)+1;saveProf();
+  }}
+async function osMenu(){
+  for(;;){
+    const ids=OWN();
+    const i=await choose('推し絆　（クエストで 絆が たまる）\n推し：'+(PROF.oshiMain?PNAME[PROF.oshiMain]:'未設定'),ids.map(id=>({l:(PROF.oshiMain===id?'♥ ':'')+PNAME[id],r:'絆Lv'+osLv(id)+(osNext(id)?'（次まで'+osNext(id)+'）':'MAX')+(osPts(id)?' P'+osPts(id):'')})));
+    if(i<0)return;const id=ids[i];
+    for(;;){
+      const L=osLv(id),o=[{l:PROF.oshiMain===id?'推しを やめる':'この子を 推しにする',r:'絆×3・能力補正×1.5'},{l:'育成ツリー',r:'残り'+osPts(id)+'P'},{l:'絆の演出を 見る',r:'到達した節目'},{l:'能力ボーナス',r:'+'+(.4*L*osK(id)).toFixed(1)+'%（基本）'}];
+      const j=await choose(PNAME[id]+'　絆Lv'+L,o);if(j<0)break;
+      if(j===0){PROF.oshiMain=PROF.oshiMain===id?null:id;saveProf();await say(PROF.oshiMain===id?PNAME[id]+'が あなたの 【推し】になった！':'推しを 解除した。',1400);hideMsg();}
+      else if(j===1)await osTree(id);
+      else if(j===2){const ms=OS_MS.map(x=>x[0]).filter(v=>v<=L);if(!ms.length){await say('絆Lv25で 最初の演出が 見られる。',1200);hideMsg();continue;}
+        const k=await choose('見る節目',ms.map(v=>({l:'絆Lv'+v})));if(k>=0)await osScene(id,ms[k]);}
+      else await say(`絆Lv${L}：全能力 +${(.4*L*osK(id)).toFixed(1)}%\nツリー：攻魔${osT(id,'pow')} 守${osT(id,'guard')} 命${osT(id,'vit')} 速${osT(id,'swift')} 極意${osT(id,'soul')}\n（戦闘中に 反映される）`,3000);hideMsg();
+    }
+  }}
 /* ===== 【控え】：4人パーティ＋控え1人。控えと交代すると 1ターン使う。死んだキャラは交代できない／全滅は 控えが生きていても 敗北／控えでも 専用武器の抽選は される =====
    解放：無冠ノ役者（滅級【伝説への挑戦】）のクリア報酬。デバッグ：reserve on|off */
 {const _pp=pickParty;pickParty=async function(max){
@@ -17609,5 +17724,10 @@ async function caSetup(ids){
     await say('★ 【控え】が 解放された！\n（パーティ編成の あとで 控えを 1人 選べる。\n　戦闘中に 1ターン使って 交代できる。\n　死んだ仲間とは 交代できず、全滅したら 控えが 生きていても 負け。\n　控えでも 専用武器の抽選は される）',4200);hideMsg();}
   return r;};}
 {const _qm=questMenu;questMenu=async function(){window.__RSV=null;return _qm.apply(this,arguments);};}
+/* 周回の終了後、半日以上 書き出していなければ 案内する（ブラウザのデータが消えたときの保険） */
+if(typeof farmSummary==='function'){const _fs=farmSummary;farmSummary=async function(){
+  const r=await _fs.apply(this,arguments);
+  try{if(Date.now()-(PROF.lastExport|0)>432e5){await say('⚠ 最後の データ書き出しから 半日以上 たっている。\nブラウザのデータが 消えると 周回の成果も 消える。\n「データの書き出し」で 保存しておこう。',3500);hideMsg();}}catch(e){}
+  return r;};}
 showTitle();requestAnimationFrame(frame);
 </script>
