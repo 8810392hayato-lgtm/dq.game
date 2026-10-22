@@ -8063,7 +8063,7 @@ async function qWave(i){
 function questState(party){
   ch7State(5);
   S.roster={};S.party=[];S.gear={};
-  party.forEach(p=>{const m={id:p.id,lv:p.lv,exp:p.exp||0,form:0,buff:0,guard:false,shield:0,eq:(p.eq||[]).filter(Boolean),o:p.o||null,ex:(p.ex===true?1:(p.ex|0)),em:p.em|0,slv:p.slv||null};S.roster[p.id]=m;S.party.push(m);});
+  party.forEach(p=>{const m={id:p.id,lv:p.lv,exp:p.exp||0,form:0,buff:0,guard:false,shield:0,eq:(p.eq||[]).filter(Boolean),o:p.o||null,ex:(p.ex===true?1:(p.ex|0)),em:p.em|0,slv:p.slv||null,bn:p.bn||null};S.roster[p.id]=m;S.party.push(m);});
   S.party.forEach(m=>{m.hp=stat(m,'hp');m.mp=stat(m,'mp');});
   Object.assign(S.flags,{q:true,aoK:true,ch:7,lilith:true});
   S.inv={qhp:12,qmp:10,revive:4};QR.base0={...S.inv};QR.gi=null;
@@ -8152,7 +8152,7 @@ async function pickParty(max){
     if(sel.includes(id))sel.splice(sel.indexOf(id),1);else if(sel.length<max)sel.push(id);
   }
 }
-const profParty=ids=>ids.map(id=>({id,lv:PROF.chars[id].lv,exp:PROF.chars[id].exp,eq:PROF.chars[id].eq.filter(Boolean),ex:(+(PROF.exsk&&PROF.exsk[id]))||0,em:(id==='lilithX'&&typeof emoMask==='function')?emoMask():0,slv:(PROF.sklv&&PROF.sklv[id])||null}));
+const profParty=ids=>ids.map(id=>({id,lv:PROF.chars[id].lv,exp:PROF.chars[id].exp,eq:PROF.chars[id].eq.filter(Boolean),ex:(+(PROF.exsk&&PROF.exsk[id]))||0,em:(id==='lilithX'&&typeof emoMask==='function')?emoMask():0,slv:(PROF.sklv&&PROF.sklv[id])||null,bn:(typeof bnFor==='function'?bnFor(id):null)}));
 async function questMenu(){
   for(;;){
     menuCtx();await loginBonus();ensureDaily();await showMsgs();await bakRemind();
@@ -16346,7 +16346,7 @@ const O=(x,y,w,h,k,o)=>Object.assign({x,y,w,h,k,solid:true},o||{});
 /* --- 部屋データ --- */
 const ROOMS={
  hall:{name:'玄関ホール',fl:'wood',
-  doors:[{x:7,y:10,to:'exit',lock:'gate',label:'玄関の扉'},{x:14,y:5,to:'dining',tx:1,ty:5},{x:0,y:5,to:'library',tx:13,ty:5},{x:7,y:0,to:'corr2',tx:7,ty:9,stairs:1}],
+  doors:[{x:7,y:10,to:'exit',lock:'gate',label:'玄関の扉'},{x:14,y:5,to:'dining',tx:1,ty:5},{x:0,y:5,to:'library',tx:13,ty:5},{x:7,y:0,to:'corr2',tx:7,ty:9,stairs:1},{x:14,y:8,to:'parlor',tx:1,ty:5,lock:'brass',label:'応接間の扉'}],
   objs:[O(3,3,1,1,'pillar'),O(11,3,1,1,'pillar'),O(3,7,1,1,'pillar'),O(11,7,1,1,'pillar'),O(5,4,5,4,'rug',{solid:false}),
         O(1,1,1,1,'vase',{say:'空っぽの花瓶だ。ホコリが かぶっている。'}),O(12,1,2,1,'closet',{hide:1}),O(5,0,5,2,'stairsdeco',{solid:false})]},
  dining:{name:'食堂',fl:'wood',
@@ -16354,16 +16354,16 @@ const ROOMS={
   objs:[O(4,4,7,2,'table'),O(11,1,1,1,'clock',{i:1,act:'clock'}),O(2,2,1,1,'chair'),O(12,8,1,1,'chair'),O(1,8,2,1,'plant',{say:'枯れた観葉植物。'})]},
  kitchen:{name:'台所',fl:'tile',
   doors:[{x:7,y:10,to:'dining',tx:7,ty:1},{x:0,y:5,to:'bath',tx:13,ty:5},{x:7,y:0,to:'basement',tx:7,ty:1,lock:'cellar',label:'地下への扉'}],
-  objs:[O(1,1,5,1,'counter'),O(9,1,3,1,'stove',{say:'コンロの上に 鍋が ひとつ。中身は カラッポだ。'}),O(13,1,1,2,'fridge',{say:'冷蔵庫の中は 何も ない。ただ 冷たい風だけが 吹いた。'}),
+  objs:[O(1,1,5,1,'counter'),O(9,1,3,1,'stove',{i:1,act:'stove'}),O(13,1,1,2,'fridge',{say:'冷蔵庫の中は 何も ない。ただ 冷たい風だけが 吹いた。'}),
         O(5,5,5,2,'table'),O(12,7,2,2,'closet',{hide:1,label:'食器棚'})]},
  library:{name:'図書室',fl:'carpet',
   doors:[{x:14,y:5,to:'hall',tx:1,ty:5},{x:0,y:0,to:null},{x:7,y:0,to:'bath',tx:7,ty:9}],
-  objs:[O(1,1,5,1,'shelf'),O(9,1,5,1,'shelf'),O(2,4,3,1,'shelf'),O(10,4,3,1,'shelf'),O(2,7,3,1,'shelf'),O(10,7,2,1,'desk',{i:1,act:'diary'}),O(6,6,3,1,'rug',{solid:false})]},
+  objs:[O(1,1,5,1,'shelf'),O(9,1,5,1,'shelf'),O(2,4,3,1,'shelf'),O(10,4,3,1,'shelf',{i:1,act:'books',label:'本棚'}),O(2,7,3,1,'shelf'),O(10,7,2,1,'desk',{i:1,act:'diary'}),O(6,6,3,1,'rug',{solid:false})]},
  bath:{name:'浴室',fl:'tile',
   doors:[{x:7,y:10,to:'library',tx:7,ty:1},{x:14,y:5,to:'kitchen',tx:1,ty:5}],
   objs:[O(1,2,5,2,'tub'),O(9,1,2,1,'mirror',{i:1,act:'mirror'}),O(12,7,2,2,'closet',{hide:1,label:'カーテンの陰'}),O(8,6,1,1,'stool')]},
  corr2:{name:'2階の廊下',fl:'carpet',
-  doors:[{x:7,y:10,to:'hall',tx:7,ty:1,stairs:1},{x:0,y:5,to:'bedroom',tx:13,ty:5},{x:14,y:5,to:'study',tx:1,ty:5,lock:'silver',label:'書斎の扉'}],
+  doors:[{x:7,y:10,to:'hall',tx:7,ty:1,stairs:1},{x:0,y:5,to:'bedroom',tx:13,ty:5},{x:14,y:5,to:'study',tx:1,ty:5,lock:'silver',label:'書斎の扉'},{x:7,y:0,to:'nursery',tx:7,ty:9}],
   objs:[O(2,2,2,1,'closet',{hide:1,label:'リネン棚'}),O(10,2,1,1,'plant',{say:'ホコリっぽい 花の鉢。'}),O(3,7,9,1,'rug',{solid:false}),O(11,8,2,1,'shelf')]},
  bedroom:{name:'寝室',fl:'carpet',
   doors:[{x:14,y:5,to:'corr2',tx:1,ty:5}],
@@ -16371,6 +16371,12 @@ const ROOMS={
  study:{name:'書斎',fl:'wood',
   doors:[{x:0,y:5,to:'corr2',tx:13,ty:5}],
   objs:[O(5,3,5,2,'desk',{i:1,act:'desk'}),O(1,1,4,1,'shelf'),O(10,1,4,1,'shelf'),O(2,7,3,2,'rug',{solid:false}),O(12,7,1,1,'chair')]},
+ parlor:{name:'応接間',fl:'carpet',
+  doors:[{x:0,y:5,to:'hall',tx:13,ty:8}],
+  objs:[O(10,1,3,2,'piano',{i:1,act:'piano'}),O(2,1,4,1,'painting',{i:1,act:'painting'}),O(5,4,4,2,'table'),O(1,8,2,1,'plant',{say:'造花だ。ホコリが 積もっている。'}),O(11,7,2,2,'closet',{hide:1,label:'ソファの陰'}),O(8,8,1,1,'chair')]},
+ nursery:{name:'子供部屋',fl:'wood',
+  doors:[{x:7,y:10,to:'corr2',tx:7,ty:1}],
+  objs:[O(2,2,3,2,'toybox',{i:1,act:'star'}),O(11,2,2,1,'musicbox',{i:1,act:'musicbox'}),O(5,6,3,1,'desk',{i:1,act:'kidnote'}),O(1,7,2,2,'closet',{hide:1,label:'おもちゃ箱の陰'}),O(10,6,3,2,'rug',{solid:false})]},
  basement:{name:'地下室',fl:'stone',
   doors:[{x:7,y:0,to:'kitchen',tx:7,ty:1}],
   objs:[O(4,3,2,2,'pillar'),O(9,5,2,2,'pillar'),O(4,7,2,1,'pillar'),O(13,3,1,1,'altar',{i:1,act:'altar'})]}
@@ -16423,7 +16429,7 @@ HR.start=function(){
   ov=document.createElement('canvas');ov.width=SW;ov.height=SH;ov.id='hrcv';
   ov.style.cssText='position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;background:#000';
   $('stage').insertBefore(ov,$('menu'));cx=ov.getContext('2d');cx.imageSmoothingEnabled=false;
-  F={silver:0,cellar:0,gate:0,flash:0,diary:0,safe:0,awake:0,memo:0,clock:0,deaths:0,final:0};
+  F={silver:0,cellar:0,gate:0,flash:0,diary:0,safe:0,awake:0,memo:0,clock:0,deaths:0,final:0,brass:0,paint:0,melody:0,note:0,moon:0,sun:0,star:0};
   P={room:'hall',x:7*TS,y:8*TS,dir:'up',st:100,hidden:0,walkT:0,moving:0,shake:0,fade:0};
   M={room:null,x:0,y:0,pend:null,lost:0,grace:0,path:null,pt:0,saw:0,step:0,speed:64,wanderT:0,face:0};
   HR.h=hAct;S.h=HR.h;lastT=performance.now();HR.pause=true;
@@ -16452,14 +16458,21 @@ function hAct(a){
 async function menu(){
   const i=await hchoose('洋館',[{l:'ヒント'},{l:'もちもの'},{l:'あきらめて タイトルへ'},{l:'とじる'}]);
   if(i===0)await hsay(hint());
-  else if(i===1){const it=[];if(F.silver)it.push('銀の鍵');if(F.flash)it.push('懐中電灯');if(F.cellar)it.push('地下室の鍵');if(F.gate)it.push('門の鍵');await hsay('もちもの：'+(it.length?it.join('、'):'なし'));}
+  else if(i===1){const it=[];if(F.silver)it.push('銀の鍵');if(F.brass)it.push('真鍮の鍵');if(F.moon)it.push('月の紋章');if(F.sun)it.push('陽の紋章');if(F.star)it.push('星の紋章');if(F.flash)it.push('懐中電灯');if(F.cellar)it.push('地下室の鍵');if(F.gate)it.push('門の鍵');await hsay('もちもの：'+(it.length?it.join('、'):'なし'));}
   else if(i===2){if((await hchoose('本当に やめる？',[{l:'はい'},{l:'いいえ'}]))===0)endGame();}
 }
+function crestHint(){
+  const nc=(F.moon?1:0)+(F.sun?1:0)+(F.star?1:0);if(nc>=3)return '';
+  let t='\n紋章：'+nc+'/3';
+  if(!F.sun){t+='　陽＝'+(!F.brass?'台所の どこかに 鍵が ある':!F.melody?'応接間の ピアノ。旋律を どこかで 聞け':'ピアノを 弾け');}
+  else if(!F.moon){t+='　月＝図書室の 本棚。絵の 題が ヒント';}
+  else{t+='　星＝2階の 子供部屋';}
+  return t;}
 function hint(){
   if(F.gate)return '門の鍵を 手に入れた！\n玄関ホールの 扉へ 急げ！';
-  if(F.cellar)return '地下室の鍵を 手に入れた。\n台所の奥の 扉から 地下へ。';
-  if(F.safe)return '金庫は 開いた。台所の地下への扉へ。';
-  if(F.silver&&F.memo)return '金庫は 寝室にある。番号は 食堂の時計が ヒントらしい。';
+  if(F.cellar)return '地下室の鍵を 手に入れた。\n台所の奥の 扉から 地下へ。'+crestHint();
+  if(F.safe)return '金庫は 開いた。台所の地下への扉へ。'+crestHint();
+  if(F.silver&&F.memo)return '金庫は 寝室にある。番号は 食堂の時計が ヒントらしい。'+crestHint();
   if(F.silver)return '銀の鍵は 2階の書斎の扉の もの。';
   if(F.diary)return '浴室の鏡の裏に 何かが あるらしい。';
   return '図書室の 机を 調べてみよう。';
@@ -16539,8 +16552,8 @@ function ytPlay(id){return new Promise(res=>{
 const ACT={
  async clock(){F.clock=1;await hsay('壁掛け時計は 7時25分で 止まっている。\n針の下に 小さく 彫られている。\n「止まった時間が 鍵になる」');},
  async diary(){
-  if(!F.diary){F.diary=1;await hsay('机の上に 古い日記が ある。\n——「銀の鍵は 浴室の鏡の裏に。地下へ続く鍵は 寝室の金庫に 隠した。」');await hsay('——「金庫の数字は 食堂の時計が 知っている。」\n……日記は ここで 途切れている。');}
-  else await hsay('日記は「銀の鍵＝浴室の鏡の裏」「金庫の数字＝食堂の時計」と 読める。');},
+  if(!F.diary){F.diary=1;await hsay('机の上に 古い日記が ある。\n——「銀の鍵は 浴室の鏡の裏に。地下へ続く鍵は 寝室の金庫に 隠した。」\n——「応接間の鍵は 火の気の ない かまどに 眠る。」');await hsay('——「金庫の数字は 食堂の時計が 知っている。」\n……日記は ここで 途切れている。');}
+  else await hsay('日記は「銀の鍵＝浴室の鏡の裏」「金庫の数字＝食堂の時計」「応接間の鍵＝火の気の ない かまど」と 読める。');},
  async mirror(){
   if(F.silver){await hsay('割れた鏡に 自分の顔が うつる。……後ろに 何かいた気が する。');return;}
   await hsay('大きな鏡だ。縁に 手を かけると……');
@@ -16560,8 +16573,42 @@ const ACT={
   const d=[];for(let k=1;k<=3;k++){const i=await hchoose(`${k}桁目`,Array.from({length:10},(_,n)=>({l:String(n)})),{cancel:true});if(i<0)return;d.push(i);}
   if(d.join('')==='725'){F.safe=1;F.cellar=1;SND_('chime');await hsay('カチッ。金庫が 開いた！\n【地下室の鍵】を 手に入れた！');await photoFlash('a',3200,'金庫の底に、なぜか 写真が 入っていた。');await hsay('猫を 抱いた 誰かの 写真だ……。\n意味は わからない。が、あたたかそうだ。');}
   else{SND_('miss');await hsay('ガチャ ガチャ……開かない。違うようだ。');}},
+ async stove(){
+  if(!F.diary){await hsay('コンロの上に 鍋が ひとつ。中身は カラッポだ。');return;}
+  if(!F.brass){F.brass=1;SND_('chime');await hsay('日記の 一文を 思い出す。\n「応接間の鍵は 火の気の ない かまどに 眠る」\n鍋の底に 貼りついていた——');await hsay('【真鍮の鍵】を 手に入れた！\n（玄関ホールの 右の扉の 鍵だ）');}
+  else await hsay('鍋は もう カラッポだ。');},
+ async painting(){
+  F.paint=1;await hsay('壁に 大きな 絵が かかっている。\n4冊の 本が 並んだ 静物画だ。\n本の 背には 金文字で 題が ある。\n　『朝焼け』『海』『森』『月』\n（……色が 題と 合っている気が する）');},
+ async piano(){
+  if(F.sun){await hsay('ピアノは もう 静かだ。');return;}
+  await hsay('黒い グランドピアノ。\n鍵盤の 上に、4つ分の 窪みのような ものが ある。\n……曲を 弾けば 何か 起きそうだ。');
+  const N=['ド','レ','ミ','ファ','ソ','ラ'],ans=[2,4,0,1],got=[];
+  for(let k=1;k<=4;k++){const i=await hchoose(`${k}音目`,N.map(n=>({l:n})),{cancel:true});if(i<0)return;got.push(i);SND_('tick');}
+  if(got.join()===ans.join()){F.sun=1;SND_('chime');await hsay('——旋律が 部屋に 響いた。\nピアノの 蓋が 静かに 開く。');await hsay('【陽の紋章】を 手に入れた！');}
+  else{SND_('miss');await hsay('……不協和音が 響いた。\nどこかで 何かが 動く気配が した。');if(M.active&&!P.hidden){M.lost=0;}}},
+ async musicbox(){
+  F.melody=1;await hsay('古い オルゴールだ。ねじを 巻くと……');SND_('chime');
+  await hsay('小さな 旋律が 流れた。\n　ミ……ソ……ド……レ……\n（……誰かが 耳元で 数えている気が した）');},
+ async kidnote(){
+  F.note=1;await hsay('子供の 字で 書かれた 紙が ある。\n\n　「おうちの いすを かぞえてね。\n　 しょくどう・しんしつ・しょさい\n　 その じゅんで ならべると\n　 ほしの はこが あくよ」');},
+ async star(){
+  if(F.star){await hsay('おもちゃ箱は もう 空っぽだ。');return;}
+  await hsay('星の 模様の おもちゃ箱だ。\n3桁の ダイヤルが ついている。');
+  const d=[];for(let k=1;k<=3;k++){const i=await hchoose(`${k}桁目`,Array.from({length:10},(_,n)=>({l:String(n)})),{cancel:true});if(i<0)return;d.push(i);}
+  if(d.join('')==='211'){F.star=1;SND_('chime');await hsay('カチャリ。箱の 底から 光が 漏れた。');await hsay('【星の紋章】を 手に入れた！');}
+  else{SND_('miss');await hsay('ガチャ ガチャ……開かない。');}},
+ async books(){
+  if(F.moon){await hsay('本棚の 仕掛けは もう 開いている。');return;}
+  await hsay('本棚に、背表紙の 色が 目立つ 4冊が 並んでいる。\n　赤・青・緑・黄\n引き出す 順番に 意味が ありそうだ。');
+  const C=['赤','青','緑','黄'],ans=[0,1,2,3],got=[];
+  for(let k=1;k<=4;k++){const i=await hchoose(`${k}冊目`,C.map(n=>({l:n})),{cancel:true});if(i<0)return;got.push(i);SND_('tick');}
+  if(got.join()===ans.join()){F.moon=1;SND_('chime');await hsay('ゴトン。本棚の 奥の 仕掛けが 外れた。');await hsay('【月の紋章】を 手に入れた！');}
+  else{SND_('miss');await hsay('本が 元に 戻った。……違うようだ。');}},
  async altar(){
   if(F.gate){await hsay('祭壇には もう 何も ない。早く 逃げろ！');return;}
+  const nc=(F.moon?1:0)+(F.sun?1:0)+(F.star?1:0);
+  if(nc<3){await hsay('祭壇に 赤い鍵が 置かれている。\nだが 3つの 窪みが 手を 阻む。\n（紋章：'+nc+'/3　──　月・陽・星）');return;}
+  await hsay('3つの 紋章を 窪みに はめる。\nカチ、カチ、カチ——。');
   await hsay('祭壇の上に 赤い鍵が 置かれている……。\n手を 伸ばすと——');
   F.gate=1;F.final=1;SND_('chime');await hsay('【門の鍵】を 手に入れた！');
   SND_('warn');P.shake=1.2;
@@ -16577,15 +16624,8 @@ async function useDoor(d,bx,by){
   if(d.to==='exit'){
     if(!F.gate){back();SND_('cancel');await hsay('玄関の扉は 固く 閉ざされている。\n（出口の鍵が 必要だ）');return;}
     await win();return;}
-  if(d.lock&&!F[d.lock]){back();SND_('cancel');await hsay(d.lock==='silver'?'書斎の扉だ。鍵が かかっている。\n（銀色の鍵穴だ）':'重い扉だ。鍵が かかっている。\n（地下室の鍵が 必要だ）');
-    if(d.lock!=='gate'){
-      /* 扉の脇に 4桁の ダイヤル錠。ヒントは どこにも ない */
-      const k=await hchoose('扉の脇に ダイヤル錠が ある',[{l:'番号を入れてみる',r:'4桁'},{l:'やめる'}],{cancel:true});
-      if(k===0){const dg=[];for(let n=1;n<=4;n++){const i=await hchoose(`${n}桁目`,Array.from({length:10},(_,m)=>({l:String(m)})),{cancel:true});if(i<0)return;dg.push(i);}
-        if(dg.join('')==='5141'){F[d.lock]=1;SND_('chime');await hsay('——カチッ。\n鍵が 外れた。\n（……なんで 開くんだ？）');}
-        else{SND_('cancel');await hsay('ガチャガチャ……\n開かない。');return;}}
-      else return;}
-    else return;}
+  if(d.lock&&!F[d.lock]){back();SND_('cancel');await hsay(d.lock==='silver'?'書斎の扉だ。鍵が かかっている。\n（銀色の鍵穴だ）':d.lock==='brass'?'応接間の扉だ。鍵が かかっている。\n（真鍮の鍵穴だ）':'重い扉だ。鍵が かかっている。\n（地下室の鍵が 必要だ）');
+    return;}
   changeRoom(d);}
 function changeRoom(d){
   const old=P.room;
@@ -16800,6 +16840,10 @@ function drawObj(o,t){
    case 'vase':R_(x+4,y+4,8,10,'#4a6a9a');R_(x+6,y+2,4,3,'#6a8aba');break;
    case 'plant':R_(x+4,y+8,8,6,'#5a3a22');R_(x+3,y+2,10,7,'#3a5a30');break;
    case 'chair':R_(x+3,y+4,10,8,'#5a3a22');R_(x+3,y+2,10,3,'#6a4a2a');break;
+   case 'piano':R_(x,y,w,h,'#14141a');R_(x+1,y+1,w-2,h-4,'#24242c');for(let i=2;i<w-2;i+=3)R_(x+i,y+h-5,2,4,'#e8e8ee');break;
+   case 'painting':R_(x,y,w,h,'#5a3a1a');R_(x+1,y+1,w-2,h-2,'#2a3a4a');for(let i=0;i<4;i++)R_(x+4+i*((w-10)/4),y+3,4,h-6,['#c03030','#3060c0','#30a050','#d8c030'][i]);break;
+   case 'toybox':R_(x,y,w,h,'#7a4a8a');R_(x+1,y+1,w-2,h-2,'#a06ab0');R_(x+w/2-2,y+h/2-2,4,4,'#ffd860');break;
+   case 'musicbox':R_(x,y,w,h,'#5a3a1a');R_(x+1,y+1,w-2,h-2,'#8a5a2a');R_(x+w/2-2,y+2,4,3,'#e8d890');break;
    case 'stool':R_(x+3,y+5,10,8,'#8a8a96');break;
   }
 }
@@ -17543,6 +17587,7 @@ function advRank(){const p=advPoints();let r=0;while(r<ADV_MAX&&p>=advNeed(r+1))
 let _ar=0,_arT=0;
 const advRankC=()=>{const t=Date.now();if(t-_arT>1500){try{_ar=advRank();}catch(e){_ar=0;}_arT=t;}return _ar;};
 STATMODS.push((m,k,v)=>{
+  if(m.bn||(window.ONL&&ONL.on))return v; /* bn=パーティ情報に 乗せた 本人の補正（マルチでも全員同じ値になる） */
   if(!m||!S||!S.party||!S.party.includes(m)||!(k==='hp'||k==='atk'||k==='def'||k==='mag'||k==='agi'))return v;
   const r=advRankC();return r?Math.round(v*(1+ADV_PER*r)):v;});
 {const _qr=questReward;questReward=async function(q,online,me){
@@ -17634,8 +17679,26 @@ const osPts=id=>Math.max(0,osLv(id)-osSpent(id));
 const osT=(id,k)=>osD(id).tree[k]|0;
 const osK=id=>PROF.oshiMain===id?1.5:1;
 let _osc={};const osLvC=id=>{const t=Date.now(),c=_osc[id];if(c&&t-c[0]<1500)return c[1];const v=osLv(id);_osc[id]=[t,v];return v;};
-const osIn=m=>m&&S&&((S.party&&S.party.includes(m))||S.reserve===m);
+const osInAny=m=>m&&S&&((S.party&&S.party.includes(m))||S.reserve===m);
+const osIn=m=>m&&!(window.ONL&&ONL.on)&&S&&((S.party&&S.party.includes(m))||S.reserve===m);
+/* 本人の補正（冒険者ランク＋推し絆）を 数値にして パーティ情報に 乗せる。マルチでも 各自の分が 全員に 同じ値で 伝わる */
+function bnFor(id){
+  try{
+    const adv=(typeof advRank==='function'?advRank():0)*(typeof ADV_PER!=='undefined'?ADV_PER:0);
+    const L=PROF.oshi&&PROF.oshi[id]?osLv(id):0,K=osK(id),b={};
+    if(!adv&&!L)return null;
+    const base=.004*L*K;
+    b.atk=adv+base+.02*osT(id,'pow')*K*(L?1:0);b.mag=b.atk;
+    b.def=adv+base+.03*osT(id,'guard')*K*(L?1:0);
+    b.hp=adv+base+.03*osT(id,'vit')*K*(L?1:0);
+    b.agi=adv+base+.02*osT(id,'swift')*K*(L?1:0);
+    b.dm=(L>=50?.03*osT(id,'soul')*K:0);
+    ['atk','mag','def','hp','agi','dm'].forEach(k=>{b[k]=Math.round(b[k]*1e4)/1e4;});
+    return b;
+  }catch(e){return null;}}
 STATMODS.push((m,k,v)=>{
+  if(m&&m.bn&&osInAny(m)){const r=m.bn[k];return r?Math.round(v*(1+r)):v;}
+  if(m&&m.bn)return v;
   if(!osIn(m)||!PROF.oshi||!PROF.oshi[m.id])return v;
   const L=osLvC(m.id);if(!L)return v;const K=osK(m.id);let r=.004*L;
   if(k==='atk'||k==='mag')r+=.02*osT(m.id,'pow');
@@ -17643,7 +17706,7 @@ STATMODS.push((m,k,v)=>{
   if(k==='hp')r+=.03*osT(m.id,'vit');
   if(k==='agi')r+=.02*osT(m.id,'swift');
   return Math.round(v*(1+r*K));});
-DMGMODS.push((m,s,f,r)=>{if(!osIn(m)||!PROF.oshi||!PROF.oshi[m.id])return;const n=osT(m.id,'soul');if(n&&osLvC(m.id)>=50)r.d=Math.round(r.d*(1+.03*n*osK(m.id)));});
+DMGMODS.push((m,s,f,r)=>{if(m&&m.bn&&osInAny(m)){if(m.bn.dm)r.d=Math.round(r.d*(1+m.bn.dm));return;}if(m&&m.bn)return;if(!osIn(m)||!PROF.oshi||!PROF.oshi[m.id])return;const n=osT(m.id,'soul');if(n&&osLvC(m.id)>=50)r.d=Math.round(r.d*(1+.03*n*osK(m.id)));});
 
 /* ---- 演出：絆Lvの節目 ---- */
 const OS_MS=[[25,'ここから、本当の旅が始まる。'],[50,'背中を 預けられる。\nそれが 何より 嬉しい。'],[75,'どんな夜も、\n君となら 越えていける。'],[100,'君は 私の たった一人の 推し。\nこれからも、ずっと。']];
@@ -17744,7 +17807,7 @@ async function osMenu(){
   const id=window.__RSV;
   if(!id||!PROF.reserveOn||(window.ONL&&ONL.on)||S.party.some(x=>x.id===id)||!PROF.chars[id])return;
   const p=profParty([id])[0];
-  const m={id:p.id,lv:p.lv,exp:p.exp||0,form:0,buff:0,guard:false,shield:0,eq:(p.eq||[]).filter(Boolean),o:null,ex:(p.ex===true?1:(p.ex|0)),em:p.em|0,slv:p.slv||null};
+  const m={id:p.id,lv:p.lv,exp:p.exp||0,form:0,buff:0,guard:false,shield:0,eq:(p.eq||[]).filter(Boolean),o:null,ex:(p.ex===true?1:(p.ex|0)),em:p.em|0,slv:p.slv||null,bn:p.bn||null};
   S.roster[id]=m;m.hp=stat(m,'hp');m.mp=stat(m,'mp');S.reserve=m;};}
 {const _rq=runQuest;runQuest=async function(q){
   let r;
