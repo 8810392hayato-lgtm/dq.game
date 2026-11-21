@@ -59,6 +59,10 @@ header span{color:var(--dim);font-size:13px}
 #dp{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(3,54px);gap:3px}
 #pad button{background:var(--pad);border:2px solid #3a428f;border-radius:10px;color:var(--txt);font:inherit;font-size:16px;touch-action:none}
 #pad button:active,#pad button.dn{background:var(--pad-on)}
+#hstick{display:none;width:150px;height:150px;border-radius:50%;border:2px solid #3a428f;background:radial-gradient(circle,#2a3070 0,#161a40 70%);position:relative;touch-action:none;flex:none;margin:2px 6px}
+#hstick i{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:#5662c8;border:2px solid #9aa6ff;box-shadow:0 2px 8px #0008;pointer-events:none}
+.hron #dp{display:none}.hron #hstick{display:block}
+.hron #ab button[data-k=cancel].on{background:#c8a030;border-color:#ffe08a;color:#201800;font-weight:700}
 #ab{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
 #ab .row{display:flex;gap:10px}
 #ab button{width:64px;height:54px}
@@ -8438,6 +8442,7 @@ save / reset prof … 保存 / プロフィール初期化
 status … 現在のデータ概要
 oshi <キャラID> <Lv> … 推し絆Lvを設定（例: oshi mag 100）
 reserve on|off … 【控え】（4人＋控え1人）を 解放／ロック
+descend <4-10|all> … 失った感情の降臨ステージを出現させる（4孤独 5恐怖 6憎悪 7嫉妬 8諦め 9希望 10愛。愛は失いしリリス必須）
 quadskip on|off … マグ・げらりん・コジロー・カキウメの連携技演出を スキップ可能に（ソロ限定。通常プレイは右上ボタン／オート・カスタムオートは自動スキップ）`;
 function dbgRun(line,out){
   const a=line.trim().split(/\s+/),c=(a[0]||'').toLowerCase().replace(/^\//,'');if(!c)return;
@@ -8448,7 +8453,7 @@ function dbgRun(line,out){
   if(!DBG){P('デバッグモードが OFF です。「debug」と入力してください。');return;}
   const num=(x,d)=>{const n=parseInt(x,10);return isNaN(n)?d:n;};
   try{
-  if(c==='lv'){const rbm=String(a[2]||'').match(/^(\d+)次(\d+)$/);const n=rbm?Math.max(1,Math.min(99990,9999*(+rbm[1])+(+rbm[2]))):Math.max(1,Math.min(99990,num(a[2],0)));if(!a[1]||!a[2]){P('使い方: lv <キャラ|all> <Lv>');return;}
+  if(c==='lv'){const rbm=String(a[2]||'').match(/^(\d+)次(\d+)$/);const n=rbm?Math.max(1,Math.min(999990,9999*(+rbm[1])+(+rbm[2]))):Math.max(1,Math.min(999990,num(a[2],0)));if(!a[1]||!a[2]){P('使い方: lv <キャラ|all> <Lv>');return;}
     const ids=a[1]==='all'?PCHARS:[dbgNameToId(a[1])].filter(Boolean);if(!ids.length){P('キャラ不明');return;}
     ids.forEach(id=>{PROF.chars[id].lv=n;PROF.chars[id].exp=0;});saveProf();P(ids.map(i=>PNAME[i]).join('・')+' を Lv'+n+' にした');}
   else if(c==='exp'){const n=num(a[2],0);const ids=a[1]==='all'?PCHARS:[dbgNameToId(a[1])].filter(Boolean);if(!ids.length||!n){P('使い方: exp <キャラ|all> <数>');return;}
@@ -8489,6 +8494,8 @@ function dbgRun(line,out){
   else if(c==='oshi'){const id=a[1],lv=Math.max(0,Math.min(OS_MAX,+a[2]||0));if(!PNAME[id]){P('キャラID不明: '+id);}else{let x=0;for(let l=0;l<lv;l++)x+=OS_NEED(l);osD(id).xp=x;_osc={};saveProf();P(PNAME[id]+'の絆Lvを '+lv+' にした');}}
   else if(c==='quadskip'){const on=a[1]==='on',off=a[1]==='off';if(!on&&!off){P('四重奏スキップ: '+(localStorage.getItem('dq-quadskip')==='1'?'ON':'OFF')+'\n使い方: quadskip on|off（ソロ限定。通常はスキップボタン、オート・カスタムオートは自動スキップ）');return;}
     try{localStorage.setItem('dq-quadskip',on?'1':'0');}catch(e){}P('四重奏スキップ '+(on?'ON':'OFF'));}
+  else if(c==='descend'){const ns=a[1]==='all'?[4,5,6,7,8,9,10]:[num(a[1],0)].filter(n=>n>=4&&n<=10);if(!ns.length){P('使い方: descend <4-10|all>（4孤独 5恐怖 6憎悪 7嫉妬 8諦め 9希望 10愛）');return;}
+    ns.forEach(n=>{PROF['dsc_lxh'+n]=1;});saveProf();P('降臨ステージを出した：クエスト → 喪失の深淵（'+ns.map(n=>'lxh'+n).join('、')+'）。愛(10)は失いしリリス必須（join 失いしリリス）');}
   else P('不明なコマンド: '+c+'（helpで一覧）');
   }catch(e){P('エラー: '+e.message);}
 }
@@ -16396,17 +16403,55 @@ const ROOMS={
 /* ライブラリの余計なドア(0,0)を除去 */
 ROOMS.library.doors=ROOMS.library.doors.filter(d=>d.to!==null);
 /* --- グリッド生成 --- */
-for(const id in ROOMS){const R=ROOMS[id];R.id=id;R.g=[];
+function genGrid(R){R.g=[];
   for(let y=0;y<RH;y++){R.g.push([]);for(let x=0;x<RW;x++)R.g[y].push((x===0||y===0||x===RW-1||y===RH-1)?1:0);}
   R.doors.forEach(d=>{R.g[d.y][d.x]=2;});
-  R.objs.forEach(o=>{if(o.solid)for(let yy=o.y;yy<o.y+o.h;yy++)for(let xx=o.x;xx<o.x+o.w;xx++)if(R.g[yy]&&R.g[yy][xx]===0)R.g[yy][xx]=3;});
+  R.objs.forEach(o=>{if(o.solid)for(let yy=o.y;yy<o.y+o.h;yy++)for(let xx=o.x;xx<o.x+o.w;xx++)if(R.g[yy]&&R.g[yy][xx]===0)R.g[yy][xx]=3;});}
+for(const id in ROOMS){ROOMS[id].id=id;genGrid(ROOMS[id]);}
+/* --- 高難易度【裏の洋館】：部屋の追加と改装 --- */
+const BASE_IDS=Object.keys(ROOMS);
+const ORIG=JSON.parse(JSON.stringify(BASE_IDS.map(id=>({id,doors:ROOMS[id].doors,objs:ROOMS[id].objs}))));
+const HARD_ROOMS={
+ chapel:{name:'礼拝堂',fl:'stone',
+  doors:[{x:0,y:5,to:'dining',tx:13,ty:5}],
+  objs:[O(2,4,4,1,'pew'),O(9,4,4,1,'pew'),O(2,6,4,1,'pew'),O(9,6,4,1,'pew'),O(2,8,4,1,'pew'),O(9,8,4,1,'pew'),
+        O(5,1,5,1,'glassw',{i:1,act:'glass',label:'ステンドグラス'}),O(12,2,1,1,'book',{i:1,act:'hymn',label:'賛美歌集'}),O(1,1,2,2,'closet',{hide:1,label:'懺悔室'}),O(4,1,1,1,'candle',{say:'燭台の 蝋燭が ひとりでに 揺れている。'}),O(10,1,1,1,'candle',{say:'燭台の 蝋燭が ひとりでに 揺れている。'})]},
+ attic:{name:'屋根裏',fl:'wood',
+  doors:[{x:0,y:5,to:'corr2',tx:13,ty:8}],
+  objs:[O(3,3,2,2,'crate'),O(8,3,2,2,'crate'),O(6,7,3,1,'crate'),O(2,1,3,1,'trunk',{i:1,act:'trunk',label:'古いトランク'}),O(11,2,1,1,'doll',{i:1,act:'doll',label:'人形'}),O(6,1,2,1,'desk',{i:1,act:'attnote'}),O(12,8,2,2,'closet',{hide:1,label:'古い衣装箱'}),O(1,8,2,1,'crate')]},
+ garden:{name:'庭',fl:'grass',
+  doors:[{x:7,y:0,to:'hall',tx:7,ty:9},{x:7,y:10,to:'exit',lock:'chains',label:'庭の門'}],
+  objs:[O(2,2,2,2,'hedge'),O(11,2,2,2,'hedge'),O(6,3,3,1,'hedge'),O(2,6,2,2,'hedge'),O(11,6,2,2,'hedge'),O(6,6,3,1,'hedge'),
+   O(1,1,2,1,'closet',{hide:1,label:'茂みの陰'}),O(12,1,2,1,'closet',{hide:1,label:'茂みの陰'}),O(3,9,2,1,'closet',{hide:1,label:'茂みの陰'}),O(10,9,2,1,'closet',{hide:1,label:'茂みの陰'}),
+   O(2,3,1,1,'frame',{i:1,solid:false,act:'ph1',label:'壁に貼られた 写真'}),O(12,3,1,1,'frame',{i:1,solid:false,act:'ph2',label:'壁に貼られた 写真'}),O(3,6,1,1,'frame',{i:1,solid:false,act:'ph3',label:'壁に貼られた 写真'}),O(11,6,1,1,'frame',{i:1,solid:false,act:'ph4',label:'壁に貼られた 写真'}),
+   O(7,3,1,1,'frame',{i:1,solid:false,act:'ph5',label:'壁に貼られた 写真'}),O(8,6,1,1,'frame',{i:1,solid:false,act:'ph6',label:'壁に貼られた 写真'}),O(2,7,1,1,'frame',{i:1,solid:false,act:'ph7',label:'壁に貼られた 写真'}),O(12,7,1,1,'frame',{i:1,solid:false,act:'ph8',label:'壁に貼られた 写真'}),
+   O(8,3,1,1,'frame',{i:1,solid:false,act:'gnote',label:'貼り紙'})]}
+};
+function applyMode(hard){
+  ORIG.forEach(o=>{ROOMS[o.id].doors=JSON.parse(JSON.stringify(o.doors));ROOMS[o.id].objs=JSON.parse(JSON.stringify(o.objs));});
+  ROOMS.library.doors=ROOMS.library.doors.filter(d=>d.to!==null);
+  ['chapel','attic','garden'].forEach(k=>delete ROOMS[k]);
+  if(hard){
+    for(const k in HARD_ROOMS){ROOMS[k]=JSON.parse(JSON.stringify(HARD_ROOMS[k]));ROOMS[k].id=k;}
+    ROOMS.hall.doors[0]={x:7,y:10,to:'garden',tx:7,ty:1,lock:'gate',label:'玄関の扉',big:1};
+    ROOMS.dining.doors.push({x:14,y:5,to:'chapel',tx:1,ty:5,label:'礼拝堂の扉'});
+    ROOMS.corr2.doors.push({x:14,y:8,to:'attic',tx:1,ty:5,label:'屋根裏へのはしご'});
+    const drop={kitchen:'食器棚',bath:'カーテンの陰',parlor:'ソファの陰'};
+    for(const r in drop)ROOMS[r].objs=ROOMS[r].objs.filter(o=>!(o.hide&&o.label===drop[r]));
+  }
+  for(const id in ROOMS){ROOMS[id].id=id;genGrid(ROOMS[id]);}
 }
 HR.ROOMS=ROOMS;
 /* --- 状態 --- */
-let P=null,M=null,F=null,cvs=null,cx=null,raf=0,lastT=0,ov=null,keysDown=null;
+let P=null,M=null,MS=[],F=null,cvs=null,cx=null,raf=0,lastT=0,ov=null,keysDown=null;
 const dirV={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};
 const sol=(R,tx,ty)=>{if(tx<0||ty<0||tx>=RW||ty>=RH)return true;const v=R.g[ty][tx];return v===1||v===3;};
 const SND_=(n,v)=>{try{if(window.SND)SND.play(n,v);}catch(e){}};
+const HLIFE=()=>HR.gm?1:5;
+function forMons(fn){const keep=M;for(const m of MS){M=m;fn(m);}M=keep;}
+function baseSpd(m){const h=HR.hard,fin=F&&F.final;if(m.smart)return h?90:(fin?72:64);return h?(fin?68:63):(fin?72:64);}
+function mkMon(o){return Object.assign({room:null,x:0,y:0,pend:null,lost:0,grace:0,path:null,pt:0,saw:0,step:0,speed:64,wanderT:0,face:0},o||{});}
+function newF(){return {silver:0,cellar:0,gate:0,flash:0,diary:0,safe:0,awake:0,memo:0,clock:0,deaths:0,final:0,brass:0,paint:0,melody:0,note:0,moon:0,sun:0,star:0,chain1:0,chain2:0,chains:0,hymn:0,doll:0,nd:{}};}
 function hsay(t){HR.pause=true;return say(t).then(()=>{hideMsg();S.h=HR.h;HR.pause=false;});}
 async function hchoose(title,opts,o){HR.pause=true;const r=await choose(title,opts,o);S.h=HR.h;HR.pause=false;return r;}
 function boxSolid(R,px,py){ /* 足元の当たり(10x8) */
@@ -16441,21 +16486,30 @@ HR.start=function(){
   ov=document.createElement('canvas');ov.width=SW;ov.height=SH;ov.id='hrcv';
   ov.style.cssText='position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;background:#000';
   $('stage').insertBefore(ov,$('menu'));cx=ov.getContext('2d');cx.imageSmoothingEnabled=false;
-  F={silver:0,cellar:0,gate:0,flash:0,diary:0,safe:0,awake:0,memo:0,clock:0,deaths:0,final:0,brass:0,paint:0,melody:0,note:0,moon:0,sun:0,star:0};
+  HR.hard=false;HR.gm=false;HR.ev=null;applyMode(false);
+  F=newF();
   P={room:'hall',x:7*TS,y:8*TS,dir:'up',st:100,hidden:0,walkT:0,moving:0,shake:0,fade:0};
-  M={room:null,x:0,y:0,pend:null,lost:0,grace:0,path:null,pt:0,saw:0,step:0,speed:64,wanderT:0,face:0};
-  HR.h=hAct;S.h=HR.h;lastT=performance.now();HR.pause=true;
+  M=mkMon();MS=[M,mkMon({smart:1})];
+  HR.h=hAct;S.h=HR.h;lastT=performance.now();HR.pause=true;HR.padOn&&HR.padOn(true);
   raf=requestAnimationFrame(loop);
   (async()=>{
-    await hsay('——10月21日。\nげらりんは 友達に さそわれて、\n山奥の 古い洋館を 訪れていた。');
-    await hsay('気がつくと、ひとりきり。\n玄関の扉は 固く 閉ざされている……。');
-    await hsay('どこかに 出口の鍵が あるはずだ。\n調べながら 進もう。……何か いる気がする。');
+    let hardSel=false;
+    try{{const i=await hchoose('どちらで 遊ぶ？',[{l:'通常（これまで通り）'},{l:'高難易度【裏の洋館】（ライフ5）'},{l:'げらりんモード（ライフ1）'}]);hardSel=(i>=1);HR.gm=(i===2);}}catch(e){}
+    if(hardSel){HR.hard=true;HR.ev=null;applyMode(true);MS.forEach(m=>{m.speed=baseSpd(m);});}
+    await sceneIntro();
+    if(hardSel){
+      await hsay('気づくと、みんなとは はぐれていた。\n屋敷の どこかで、何かが 息を ひそめている……。');
+      await hsay('屋根裏、礼拝堂、そして 庭。\n洋館には まだ 知らない 場所が ある。\n……ヒントは もう 無い。');
+      await hsay(''+(HR.gm?'げらりんモード。\n一度でも つかまれば、すべて 振り出しだ。':'五度 つかまれば、すべて 振り出しだ。')+'\n隠れ場所は 減り、影は 賢くなっている。\n……準備は いい？');}
+    else{
+    await hsay('気がつくと、ひとりきり。\nみんなとは はぐれてしまった。\n玄関の扉は 固く 閉ざされている……。');
+    await hsay('どこかに 出口の鍵が あるはずだ。\n調べながら 進もう。……何か いる気がする。');}
     HR.pause=false;
   })();
 };
 function endGame(){
   chaseBgm(false,true);
-  HR.on=false;cancelAnimationFrame(raf);if(ov){ov.remove();ov=null;}try{$('party').style.display='';}catch(e){}
+  HR.padOn&&HR.padOn(false);HR.on=false;cancelAnimationFrame(raf);if(ov){ov.remove();ov=null;}try{$('party').style.display='';}catch(e){}
   try{SND.freeze(false);}catch(e){}
   S.h=null;S.mode='title';showTitle();}
 HR.quit=endGame;
@@ -16469,8 +16523,8 @@ function hAct(a){
 }
 async function menu(){
   const i=await hchoose('洋館',[{l:'ヒント'},{l:'もちもの'},{l:'あきらめて タイトルへ'},{l:'とじる'}]);
-  if(i===0)await hsay(hint());
-  else if(i===1){const it=[];if(F.silver)it.push('銀の鍵');if(F.brass)it.push('真鍮の鍵');if(F.moon)it.push('月の紋章');if(F.sun)it.push('陽の紋章');if(F.star)it.push('星の紋章');if(F.flash)it.push('懐中電灯');if(F.cellar)it.push('地下室の鍵');if(F.gate)it.push('門の鍵');await hsay('もちもの：'+(it.length?it.join('、'):'なし'));}
+  if(i===0)await hsay(HR.hard?'……何も 思い出せない。\n（高難易度では ヒントが 使えない）':hint());
+  else if(i===1){const it=[];if(F.silver)it.push('銀の鍵');if(F.brass)it.push('真鍮の鍵');if(F.moon)it.push('月の紋章');if(F.sun)it.push('陽の紋章');if(F.star)it.push('星の紋章');if(F.flash)it.push('懐中電灯');if(F.cellar)it.push('地下室の鍵');if(F.gate)it.push('門の鍵');if(F.chain1)it.push('鎖の鍵・壱');if(F.chain2)it.push('鎖の鍵・弐');await hsay('もちもの：'+(it.length?it.join('、'):'なし'));}
   else if(i===2){if((await hchoose('本当に やめる？',[{l:'はい'},{l:'いいえ'}]))===0)endGame();}
 }
 function crestHint(){
@@ -16493,6 +16547,8 @@ function facingPt(){const v=dirV[P.dir]||[0,1];return [P.x+8+v[0]*13,P.y+12+v[1]
 function objRect(o){return [o.x*TS,o.y*TS,o.w*TS,o.h*TS];}
 async function interact(){
   const R=ROOMS[P.room];const [fx,fy]=facingPt();
+  const nf=npcNow().find(n=>Math.hypot(fx-(n.x*TS+8),fy-(n.y*TS+10))<15);
+  if(nf){await npcTalk(nf);return;}
   /* 隠れ場所 / 調べる物 */
   let best=null;
   for(const o of R.objs){if(!(o.i||o.hide||o.say))continue;const [x,y,w,h]=objRect(o);
@@ -16507,9 +16563,13 @@ async function interact(){
 function hide(o){
   P.hidden=1;P.hideObj=o;P.hx=P.x;P.hy=P.y;
   /* 見られていたら鬼が覗きにくる */
-  M.saw=0;
-  if(M.room===P.room&&!M.pend&&M.active){const dx=(M.x-(P.x+8))/TS,dy=(M.y-(P.y+8))/TS;if(Math.hypot(dx,dy)<7)M.saw=1;}
-  if(!M.saw){M.lost=9;M.wanderT=3;}
+  P.hlog=(P.hlog||[]).filter(h=>performance.now()-h.t<60000);
+  const rep=P.hlog.some(h=>h.o===o);P.hlog.push({o,t:performance.now()});
+  forMons(()=>{
+    M.saw=0;
+    if(M.room===P.room&&!M.pend&&M.active){const dx=(M.x-(P.x+8))/TS,dy=(M.y-(P.y+8))/TS;if(Math.hypot(dx,dy)<7)M.saw=1;}
+    if(M.smart&&M.active&&M.room===P.room&&!M.pend&&rep)M.saw=1; /* 同じ隠れ場所は 覚えている */
+    if(!M.saw){M.lost=9;M.wanderT=3;}});
   SND_('cancel');}
 function unhide(){P.hidden=0;P.hideObj=null;SND_('sel');}
 
@@ -16561,6 +16621,373 @@ function ytPlay(id){return new Promise(res=>{
   const t1=setTimeout(()=>{if(!alive)showBtns(true);},7000);      /* 埋め込みが 使えない環境の 逃げ道 */
   const t2=setTimeout(()=>showBtns(true),600000);                  /* 念のため 10分で 閉じられる */
 });}
+/* --- 仲間たち（マグ・コジロー・カキウメ）：青鬼の友達のような ストーリー --- */
+
+/* --- 演出エンジン（スクリプト演出） --- */
+HR.sc=[];HR.flashA=0;
+const csay=t=>{const m=document.getElementById('msg');const low=[P,...HR.sc].some(o=>o&&o.room===undefined&&o.y>5.2*TS&&!(o.mon&&o.x<0));
+  if(m){if(low){m.style.bottom='auto';m.style.top='28px';}else{m.style.top='';m.style.bottom='';}}
+  return say(t).then(()=>{if(m){m.style.top='';m.style.bottom='';}hideMsg();S.h=HR.h;});};
+const shk=ms=>{P.shake=1;setTimeout(()=>{P.shake=0;},ms);};
+const flashFx=a=>{HR.flashA=a;};
+const mvT=(o,x,y,ms)=>new Promise(r=>{const x0=o.x,y0=o.y,t0=performance.now();o.run=1;
+  const f=()=>{const k=Math.min(1,(performance.now()-t0)/ms);o.x=x0+(x-x0)*k;o.y=y0+(y-y0)*k;if(o===P){P.moving=true;P.walkT+=.55;}
+    if(k<1)requestAnimationFrame(f);else{o.run=0;if(o===P)P.moving=false;r();}};f();});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const BT={};
+function blueTint(cv,key){if(!cv)return cv;if(BT[key])return BT[key];const c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;const g=c.getContext('2d');g.drawImage(cv,0,0);g.globalCompositeOperation='source-atop';g.fillStyle='rgba(40,80,255,.55)';g.fillRect(0,0,c.width,c.height);return BT[key]=c;}
+function drawSc(o,t){
+  cx.save();cx.globalAlpha=o.alpha===undefined?1:o.alpha;
+  if(o.mon){const k=M;M=MS[0];if(o.rot){cx.translate(o.x,o.y);cx.rotate(o.rot);(o.tint?drawMon2:drawMon)(0,0,t);}else (o.tint?drawMon2:drawMon)(o.x,o.y,t);M=k;}
+  else{let cv=sprCanvas(o.id,'m',o.dir||'down',16,16);if(cv&&o.blue)cv=blueTint(cv,o.id+(o.dir||'down'));const bob=o.run?((performance.now()/90|0)%2):0;
+    if(!o.rot){cx.fillStyle='rgba(0,0,0,.35)';cx.fillRect(o.x+3,o.y+13,10,3);}
+    if(cv){if(o.rot){cx.translate(o.x+8,o.y+14);cx.rotate(o.rot);cx.drawImage(cv,-8,-14);}else cx.drawImage(cv,Math.round(o.x),Math.round(o.y)-bob);}}
+  cx.restore();}
+function followerPos(){if(!F||!F.kjWith||F.kjDead)return null;const tr=P.trail||[];const e=tr.length>=14?tr[tr.length-14]:null;
+  if(e&&e.room===P.room)return {x:e.x,y:e.y,dir:e.dir};const v=dirV[P.dir]||[0,1];return {x:P.x-v[0]*12,y:P.y-v[1]*12,dir:P.dir};}
+const puzCount=()=>(F.safe|0)+(F.sun|0)+(F.moon|0)+(F.star|0)+(F.chain1|0)+(F.chain2|0);
+const TX=(x,y,w,h)=>[x*TS,y*TS];
+/* 限界突破ストライク（全画面演出） */
+function strikeFx(){return new Promise(res=>{
+  const el=document.createElement('div');el.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none';
+  const stop=e=>{e.stopPropagation();e.preventDefault();};['click','touchstart','touchend','pointerdown','keydown','keyup'].forEach(t=>el.addEventListener(t,stop,true));
+  const kb=e=>{e.stopPropagation();e.preventDefault();};window.addEventListener('keydown',kb,true);
+  const cv=document.createElement('canvas');cv.width=240;cv.height=176;cv.style.cssText='width:min(100vw,136vh);image-rendering:pixelated;background:#000';el.appendChild(cv);document.body.appendChild(el);
+  const g=cv.getContext('2d');g.imageSmoothingEnabled=false;
+  let sg=null,sm=null;try{sg=sprCanvas('gerarin','q4',null,32,48);sm=sprCanvas('mag','q4',null,32,48);}catch(e){}
+  const smB=blueTint(sm,'mag_q4');
+  const K=(ms,a,b)=>Math.max(0,Math.min(1,(ms-a)/(b-a)));
+  const T=(t,x,y,sz,col,al,st)=>{if(al<=0)return;g.save();g.globalAlpha=Math.min(1,al);g.font=`bold ${sz}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.lineWidth=4;g.strokeStyle=st||'#7a3a00';g.strokeText(t,x,y);g.fillStyle=col;g.fillText(t,x,y);g.restore();};
+  const glow=(x,y,r,col,al)=>{if(al<=0)return;g.save();g.globalAlpha=Math.min(1,al);const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,col);gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);g.restore();};
+  const t0=performance.now(),DUR=5200;let sfx={};const once=(k,f)=>{if(!sfx[k]){sfx[k]=1;try{f();}catch(e){}}};
+  const step=()=>{const ms=performance.now()-t0;
+    if(ms>DUR){window.removeEventListener('keydown',kb,true);el.remove();res();return;}
+    g.fillStyle='#0c1230';g.fillRect(0,0,240,176);
+    glow(70,100,40+80*K(ms,0,1600),'#ffb030',.35+.4*K(ms,0,1600));
+    /* 放射線 */
+    if(ms>700){g.save();g.globalAlpha=.5*K(ms,700,1100)*(ms<2500?1:1-K(ms,2500,3000));g.strokeStyle='#fff2c0';g.lineWidth=1;for(let i=0;i<26;i++){const an=i/26*6.283+ms/900,r1=30+((i*37+ms/6)%50),r2=r1+60;g.beginPath();g.moveTo(120+Math.cos(an)*r1,88+Math.sin(an)*r1);g.lineTo(120+Math.cos(an)*r2,88+Math.sin(an)*r2);g.stroke();}g.restore();}
+    const dash=K(ms,1500,2000);const gx=40+110*dash*dash;
+    const mx=ms<2300?170:170+(K(ms,2300,3400)*180),my=ms<2300?96:96-K(ms,2300,3400)*70;
+    if(sg)g.drawImage(sg,gx-16,100-24-Math.sin(ms/50)*(ms>1500&&ms<2300?1.5:0),32,48);
+    if(smB){g.save();if(ms>=2300){g.translate(mx,my);g.rotate((ms-2300)/120);g.drawImage(smB,-16,-24,32,48);}else{const sh=ms>1900?(Math.random()-.5)*5:0;g.drawImage(smB,mx-16+sh,100-24,32,48);}g.restore();}
+    /* 連打 */
+    if(ms>1850&&ms<2400){for(let i=0;i<5;i++){const x=150+Math.random()*34,y=78+Math.random()*44;glow(x,y,16,i%2?'#ffd060':'#ffffff',.9);g.save();g.strokeStyle='#fff';g.lineWidth=1.5;g.globalAlpha=.8;g.beginPath();g.arc(x,y,6+Math.random()*10,0,6.283);g.stroke();g.restore();}
+      once('c'+(ms/90|0),()=>SND_('crit'));}
+    T('限界なんて――',120,34,16,'#ffffff',K(ms,300,600)*(ms<1500?1:1-K(ms,1500,1800)));
+    T('ぶち抜くためにある！！',120,34,15,'#fff2c0',K(ms,900,1200)*(ms<1900?1:1-K(ms,1900,2100)));
+    /* ノヴァ */
+    if(ms>2300){once('n',()=>{SND_('warn');SND_('crit');});const n=K(ms,2300,2700);g.save();g.globalAlpha=(1-K(ms,2700,3500))*.95;const gr=g.createRadialGradient(170,96,0,170,96,20+260*n);gr.addColorStop(0,'#fff');gr.addColorStop(.5,'#ffd060');gr.addColorStop(1,'rgba(255,160,40,0)');g.fillStyle=gr;g.fillRect(0,0,240,176);g.restore();}
+    T('限界突破ストライク！！',120,150,17,'#ffffff',K(ms,2600,2900)*(ms<4400?1:1-K(ms,4400,5200)),'#1a60c0');
+    if(ms>4600){g.fillStyle=`rgba(0,0,0,${K(ms,4600,5200)})`;g.fillRect(0,0,240,176);}
+    requestAnimationFrame(step);};
+  step();});}
+/* --- 戦いの記録（写真）--- */
+const PH_W=240,PH_H=300,PH_POS={1:5,2:8,3:2,4:6,5:1,6:4,7:7,8:3},PH_CODE='53861472';
+const PH_DATA={
+ 1:{top:350,dark:0,m:[['beast',590,680],['beast',140,830],['beast',1040,1240],['beast',590,1400],['ghost',1040,860],['ghost',130,1210],['book',590,1070],['mine',400,850],['mine',780,850],['mine',400,1240],['mine',780,1240],['hole',290,1440],['hole',890,1440],['hole',110,1590],['hole',1070,1590],['heart',1090,1500],['heart',590,1740]]},
+ 2:{top:380,dark:0,m:[['ghost',390,670],['ghost',820,1650],['eye',1020,640],['eye',170,1690],['doll',990,1060],['doll',180,1260],['hole',590,580],['hole',590,770],['hole',770,990],['hole',380,1340],['hole',590,1570],['hole',590,1750],['mine',790,610],['mine',900,820],['mine',200,830],['mine',400,1010],['mine',790,1330],['mine',300,1470],['mine',400,1690],['book',590,1180]]},
+ 3:{top:375,dark:0,water:1,m:[['wolf',190,830],['wolf',1010,830],['wolf',590,1640],['hole',470,830],['hole',715,830],['hole',270,1390],['hole',910,1390],['hole',130,1560],['hole',1050,1560],['mine',440,1010],['mine',755,1010],['mine',590,1150],['mine',440,1250],['mine',755,1250]]},
+ 4:{top:380,dark:0,frame:1,m:[['boss',590,1130],['book',420,1050],['book',740,1350],['eye',150,660],['eye',770,880],['eye',380,1480],['eye',1040,1690],['hole',270,1160],['hole',590,1530],['hole',130,1730],['hole',930,1150],['hole',1050,640],['mine',390,660],['mine',615,640],['mine',130,900],['mine',130,1120],['mine',1050,1190],['mine',1050,1400],['mine',540,1690],['mine',770,1690]]},
+ 5:{top:360,dark:0,circle:1,m:[['doll',930,730],['doll',150,980],['doll',150,1400],['doll',880,1620],['book',590,1150],['hole',150,710],['hole',590,890],['hole',960,1050],['hole',950,1260],['hole',590,1410],['hole',150,1590],['mine',480,900],['mine',1100,1140],['mine',820,1130],['mine',480,1360],['mine',400,1680]]},
+ 6:{top:410,dark:1,frame:1,m:[['boss',590,1180,.6],['ghost',590,640],['ghost',570,1700],['book',190,700],['book',1000,1640],['beast',130,1190],['beast',1070,1190],['eye',880,960],['eye',310,1390],['hole',590,830],['hole',370,880],['hole',1080,970],['hole',590,1540],['hole',800,1500],['heart',80,1410],['heart',1100,1520],['mine',130,880],['mine',400,650],['mine',850,640],['mine',1070,1450],['mine',820,1690]]},
+ 7:{top:415,dark:1,m:[['boss',870,850],['eye',710,1010],['book',310,1560],['hole',500,830],['hole',590,1160],['hole',920,1160],['hole',330,1330],['hole',520,1490],['hole',1010,1710],['mine',400,640],['mine',150,930],['mine',790,1170],['mine',520,1260],['mine',570,1710],['mine',840,1710]]},
+ 8:{top:340,dark:1,frame:1,m:[['boss',600,1580,.6],['wolf',580,590],['wolf',190,1450],['wolf',1000,1450],['hole',100,1110],['hole',310,1210],['hole',500,1180],['hole',700,1180],['hole',870,1210],['mine',590,810],['mine',450,1050],['mine',80,1250],['mine',1090,1250]]}
+};
+const PH_CV={},PH_KANA={1:'ト',2:'ホ',3:'イ',4:'ヲ',5:'ニ',6:'ハ',7:'ヘ',8:'チ'};
+function phSprite(g,t,x,y,k,al){
+  g.save();g.translate(x,y);g.globalAlpha=al||1;
+  const ell=(a,b,w,h,c)=>{g.fillStyle=c;g.beginPath();g.ellipse(a,b,w,h,0,0,6.283);g.fill();};
+  const sh=(w)=>{g.fillStyle='rgba(0,0,0,.25)';g.beginPath();g.ellipse(0,k*20,w,k*5,0,0,6.283);g.fill();};
+  if(t==='hole'){const r=k*17;for(let i=0;i<5;i++)ell(0,0,r*(1-i*.17),r*(1-i*.17),['#2a0f5a','#4a22a0','#6b3ee0','#8a5cff','#c9b0ff'][i]);g.strokeStyle='#d8c8ff';g.lineWidth=1;g.beginPath();for(let a=0;a<12;a+=.2){const rr=r*.9*(1-a/14);g.lineTo(Math.cos(a+1)*rr,Math.sin(a+1)*rr);}g.stroke();}
+  else if(t==='mine'){const r=k*11;g.fillStyle='#46a03a';for(let i=0;i<8;i++){const a=i/8*6.283;g.beginPath();g.moveTo(Math.cos(a-.22)*r,Math.sin(a-.22)*r);g.lineTo(Math.cos(a)*r*1.6,Math.sin(a)*r*1.6);g.lineTo(Math.cos(a+.22)*r,Math.sin(a+.22)*r);g.fill();}ell(0,0,r,r,'#9ac83a');ell(0,0,r*.6,r*.6,'#2a5a24');ell(0,0,r*.28,r*.28,'#f4ffc0');}
+  else if(t==='heart'){sh(k*9);ell(-k*4,0,k*7,k*8,'#d8283a');ell(k*4,0,k*7,k*8,'#d8283a');ell(0,k*4,k*9,k*8,'#e03a48');g.fillStyle='#3a9a44';g.fillRect(-k*1,-k*11,k*2,k*5);ell(k*5,-k*9,k*5,k*2.5,'#58c060');ell(-k*2,-k*3,k*2,k*3,'rgba(255,255,255,.6)');}
+  else if(t==='book'){ell(0,0,k*32,k*26,'rgba(255,240,150,.35)');sh(k*24);g.fillStyle='#d8d4f0';g.beginPath();g.moveTo(-k*26,k*2);g.lineTo(-k*2,-k*12);g.lineTo(-k*2,k*10);g.lineTo(-k*24,k*14);g.fill();g.fillStyle='#bcb4e8';g.beginPath();g.moveTo(k*26,k*2);g.lineTo(k*2,-k*12);g.lineTo(k*2,k*10);g.lineTo(k*24,k*14);g.fill();g.strokeStyle='#5a4aa0';g.lineWidth=1.5;g.beginPath();g.moveTo(0,-k*12);g.lineTo(0,k*10);g.stroke();g.fillStyle='#e8b830';g.beginPath();g.moveTo(0,-k*6);g.lineTo(k*8,k*4);g.lineTo(-k*8,k*4);g.fill();ell(0,k*0,k*2.5,k*2.5,'#fff');}
+  else if(t==='ghost'){sh(k*12);g.fillStyle='#e8d6a0';g.beginPath();g.ellipse(0,-k*4,k*14,k*15,0,Math.PI,0);g.lineTo(k*14,k*14);g.lineTo(-k*14,k*14);g.fill();g.strokeStyle='#b89c5a';g.lineWidth=1.2;for(let i=-3;i<=3;i++){g.beginPath();g.moveTo(-k*13,i*k*4);g.lineTo(k*13,i*k*4-k*3);g.stroke();}g.fillStyle='#1c2440';g.fillRect(-k*12,-k*8,k*24,k*5);ell(-k*5,-k*5.5,k*2,k*1.3,'#fff');ell(k*5,-k*5.5,k*2,k*1.3,'#fff');ell(-k*15,k*5,k*3,k*5,'#d8c68a');ell(k*15,k*5,k*3,k*5,'#d8c68a');}
+  else if(t==='doll'){sh(k*20);ell(0,k*6,k*19,k*15,'#d6b45a');ell(0,k*6,k*19,k*15,'#d6b45a');ell(0,-k*12,k*12,k*11,'#e4c670');g.fillStyle='#6a4a1c';g.fillRect(-k*13,-k*15,k*26,k*3);ell(-k*5,-k*12,k*4,k*4,'#cfe8f0');ell(k*5,-k*12,k*4,k*4,'#cfe8f0');ell(-k*5,-k*12,k*1.6,k*1.6,'#222');ell(k*5,-k*12,k*1.6,k*1.6,'#222');ell(-k*19,k*3,k*6,k*9,'#c4a04a');ell(k*19,k*3,k*6,k*9,'#c4a04a');g.strokeStyle='#8a6a2a';g.lineWidth=1.5;g.beginPath();g.arc(0,k*8,k*10,0.2,2.9);g.stroke();}
+  else if(t==='eye'){ell(0,0,k*16,k*14,'#2a1050');ell(0,0,k*13,k*11,'#3a1a78');g.strokeStyle='#e8602a';g.lineWidth=k*2.5;g.beginPath();g.ellipse(0,0,k*9,k*8,0,0,6.283);g.stroke();ell(-k*3,-k*3,k*3,k*3,'#fff');ell(0,0,k*4,k*4,'#120628');g.fillStyle='#5a38b0';g.beginPath();g.moveTo(-k*20,k*10);g.lineTo(-k*13,k*6);g.lineTo(-k*13,k*13);g.fill();g.beginPath();g.moveTo(k*20,k*10);g.lineTo(k*13,k*6);g.lineTo(k*13,k*13);g.fill();}
+  else if(t==='beast'){sh(k*22);g.fillStyle='#3a9ab8';g.beginPath();g.moveTo(-k*8,-k*8);g.lineTo(-k*34,-k*20);g.lineTo(-k*30,k*2);g.lineTo(-k*36,k*14);g.lineTo(-k*10,k*10);g.fill();g.beginPath();g.moveTo(k*8,-k*8);g.lineTo(k*34,-k*20);g.lineTo(k*30,k*2);g.lineTo(k*36,k*14);g.lineTo(k*10,k*10);g.fill();g.fillStyle='#7ad0e0';g.beginPath();g.moveTo(-k*10,-k*6);g.lineTo(-k*26,-k*12);g.lineTo(-k*24,k*0);g.lineTo(-k*10,k*4);g.fill();g.beginPath();g.moveTo(k*10,-k*6);g.lineTo(k*26,-k*12);g.lineTo(k*24,k*0);g.lineTo(k*10,k*4);g.fill();ell(0,k*4,k*13,k*17,'#1c2440');ell(0,-k*12,k*9,k*9,'#2a3258');g.fillStyle='#d8aa30';g.beginPath();g.moveTo(-k*10,-k*17);g.lineTo(-k*5,-k*26);g.lineTo(0,-k*18);g.lineTo(k*5,-k*26);g.lineTo(k*10,-k*17);g.fill();ell(-k*3,-k*11,k*1.8,k*1.8,'#ff7050');ell(k*3,-k*11,k*1.8,k*1.8,'#ff7050');g.fillStyle='#c83a3a';g.fillRect(-k*5,k*2,k*10,k*8);}
+  else if(t==='wolf'){sh(k*26);ell(0,k*4,k*26,k*17,'#8a8a96');g.fillStyle='#d8aa40';g.beginPath();g.moveTo(-k*24,-k*6);g.lineTo(-k*12,-k*26);g.lineTo(0,-k*12);g.lineTo(k*12,-k*26);g.lineTo(k*24,-k*6);g.fill();ell(0,-k*6,k*15,k*13,'#a8a8b4');g.fillStyle='#8a8a96';g.beginPath();g.moveTo(-k*14,-k*14);g.lineTo(-k*10,-k*30);g.lineTo(-k*2,-k*16);g.fill();g.beginPath();g.moveTo(k*14,-k*14);g.lineTo(k*10,-k*30);g.lineTo(k*2,-k*16);g.fill();ell(-k*6,-k*7,k*2.5,k*2,'#ff5a3a');ell(k*6,-k*7,k*2.5,k*2,'#ff5a3a');ell(0,-k*1,k*4,k*3,'#2a2a34');g.fillStyle='#3a90d8';g.beginPath();g.moveTo(0,k*0);g.lineTo(k*9,k*16);g.lineTo(-k*9,k*16);g.fill();g.fillStyle='#e8f4ff';g.beginPath();g.moveTo(0,k*6);g.lineTo(k*4,k*14);g.lineTo(-k*4,k*14);g.fill();}
+  else if(t==='boss'){ell(0,k*34,k*34,k*7,'rgba(0,0,0,.2)');g.fillStyle='#2a2460';g.beginPath();g.moveTo(-k*14,-k*20);g.lineTo(-k*52,k*8);g.lineTo(-k*40,k*38);g.lineTo(-k*12,k*20);g.fill();g.beginPath();g.moveTo(k*14,-k*20);g.lineTo(k*52,k*8);g.lineTo(k*40,k*38);g.lineTo(k*12,k*20);g.fill();g.fillStyle='#e8c868';g.beginPath();g.moveTo(-k*16,-k*26);g.lineTo(-k*24,k*30);g.lineTo(k*24,k*30);g.lineTo(k*16,-k*26);g.fill();g.fillStyle='#f4f2fa';g.beginPath();g.moveTo(-k*12,-k*14);g.lineTo(-k*22,k*36);g.lineTo(k*22,k*36);g.lineTo(k*12,-k*14);g.fill();g.fillStyle='#c8b8e8';g.fillRect(-k*3,-k*10,k*6,k*44);ell(0,-k*24,k*10,k*11,'#f4dcc0');g.fillStyle='#e8c868';g.beginPath();g.ellipse(0,-k*28,k*12,k*9,0,Math.PI,0);g.fill();ell(-k*4,-k*23,k*1.6,k*1.2,'#4a6ab0');ell(k*4,-k*23,k*1.6,k*1.2,'#4a6ab0');g.strokeStyle='#d8b848';g.lineWidth=k*1.5;g.beginPath();g.ellipse(0,-k*38,k*9,k*3,0,0,6.283);g.stroke();}
+  g.restore();}
+function phMake(s){
+  if(PH_CV[s])return PH_CV[s];const D=PH_DATA[s],cv=document.createElement('canvas');cv.width=PH_W;cv.height=PH_H;const g=cv.getContext('2d');
+  let seed=s*977;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  if(D.dark){g.fillStyle='#0f1424';g.fillRect(0,0,PH_W,PH_H);g.strokeStyle='#202a48';g.lineWidth=2;for(let i=0;i<10;i++){g.beginPath();g.moveTo(10+i*9,40);g.lineTo(110+i*9,PH_H-30);g.stroke();}
+    const gr=g.createRadialGradient(120,150,20,120,150,190);gr.addColorStop(0,'rgba(60,70,120,.35)');gr.addColorStop(1,'rgba(0,0,10,.6)');g.fillStyle=gr;g.fillRect(0,0,PH_W,PH_H);
+    g.fillStyle='#1a2038';for(let i=0;i<14;i++){g.fillRect(rnd()*PH_W,PH_H*.7+rnd()*PH_H*.3,8+rnd()*22,5+rnd()*10);}}
+  else{g.fillStyle='#cfc9bb';g.fillRect(0,0,PH_W,PH_H);g.strokeStyle='#a8a292';g.lineWidth=1;for(let x=0;x<=PH_W;x+=60){g.beginPath();g.moveTo(x,0);g.lineTo(x,PH_H);g.stroke();}for(let y=0;y<=PH_H;y+=75){g.beginPath();g.moveTo(0,y);g.lineTo(PH_W,y);g.stroke();}
+    g.strokeStyle='#b8b2a2';for(let x=30;x<PH_W;x+=60)for(let y=37;y<PH_H;y+=75){g.strokeRect(x-8,y-8,16,16);}
+    g.fillStyle='rgba(120,110,90,.18)';g.beginPath();g.moveTo(0,0);g.lineTo(PH_W,0);g.lineTo(PH_W*.7,PH_H*.28);g.lineTo(0,PH_H*.12);g.fill();
+    if(D.circle){g.strokeStyle='rgba(150,140,120,.7)';g.lineWidth=2;g.beginPath();g.arc(120,150,92,0,6.283);g.stroke();g.beginPath();g.arc(120,150,70,0,6.283);g.stroke();}
+    if(D.water){g.fillStyle='#a8c8d4';g.fillRect(0,PH_H*.3,PH_W*.38,PH_H*.12);g.fillRect(PH_W*.62,PH_H*.3,PH_W*.38,PH_H*.12);g.fillStyle='#9a9484';g.fillRect(PH_W*.38,PH_H*.18,PH_W*.24,PH_H*.45);}
+    for(let i=0;i<40;i++){const side=rnd()<.5,x=side?rnd()*14:PH_W-rnd()*14,y=rnd()*PH_H;g.fillStyle=rnd()<.4?'#c8d4f4':'#8aa070';g.beginPath();g.arc(x,y,2+rnd()*4,0,6.283);g.fill();}}
+  if(D.frame){g.strokeStyle=D.dark?'#a83030':'#b04040';g.lineWidth=5;g.strokeRect(4,4,PH_W-8,PH_H-8);}
+  const sc=PH_W/1120,items=D.m.slice().sort((a,b)=>a[2]-b[2]);
+  items.forEach(it=>{const x=(it[1]-30)*sc,y=(it[2]-D.top)/1420*PH_H;phSprite(g,it[0],x,y,(it[0]==='boss'?1.1:.78)*(it[0]==='mine'?.8:1),it[3]);});
+  /* 左下：何桁目か */
+  g.fillStyle='rgba(20,16,30,.85)';g.beginPath();g.arc(20,PH_H-20,15,0,6.283);g.fill();g.strokeStyle='#e8c868';g.lineWidth=2;g.stroke();
+  g.fillStyle='#fff6d0';g.font='bold 18px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(String(PH_POS[s]),20,PH_H-19);
+  return PH_CV[s]=cv;}
+function phView(s){return new Promise(res=>{
+  const el=document.createElement('div');el.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;touch-action:none;cursor:pointer';
+  const cv=document.createElement('canvas');cv.width=PH_W;cv.height=PH_H;cv.getContext('2d').drawImage(phMake(s),0,0);cv.style.cssText='height:min(74vh,125vw);aspect-ratio:240/300;border:6px solid #e8dcc0;box-shadow:0 0 24px #000;image-rendering:auto;background:#000';
+  const cap=document.createElement('div');cap.style.cssText='color:#f4e8c0;font:14px sans-serif;text-align:center';cap.textContent='戦いの 記録。左下の 数字は ——「'+PH_POS[s]+'」。（タップで 閉じる）';
+  el.append(cv,cap);document.body.appendChild(el);
+  const done=()=>{window.removeEventListener('keydown',kd,true);el.remove();res();};
+  const kd=e=>{if(e.key==='Enter'||e.key===' '||e.key==='Escape'){e.preventDefault();e.stopPropagation();done();}};
+  window.addEventListener('keydown',kd,true);el.addEventListener('click',done);});}
+async function phLook(s){F.ph=F.ph||{};F.ph[s]=1;SND_('sel');await phView(s);}
+async function gateCode(){
+  F.ph=F.ph||{};const got=Object.keys(F.ph).length;
+  for(;;){const i=await hchoose('庭の門：八桁の 数字錠（写真 '+got+'/8）',[{l:'数字を 合わせる'},{l:'集めた 写真を 見る'},{l:'やめる'}]);
+    if(i===2||i<0)return false;
+    if(i===1){const ks=Object.keys(F.ph).map(Number);for(let i=ks.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[ks[i],ks[j]]=[ks[j],ks[i]];}if(!ks.length){await hsay('まだ 写真を 見つけていない。\n（庭の どこかに 落ちて いるようだ）');continue;}
+      const j=await hchoose('どの 写真？',ks.map(k=>({l:'写真 '+PH_KANA[k]})).concat([{l:'もどる'}]));if(j>=0&&j<ks.length)await phView(ks[j]);continue;}
+    const d=[];for(let k=1;k<=8;k++){const n=await hchoose(`${k}桁目`,Array.from({length:10},(_,n)=>({l:String(n)})),{cancel:true});if(n<0)break;d.push(n);}
+    if(d.length<8)continue;
+    if(d.join('')===PH_CODE){SND_('chime');await hsay('カチ、カチ、カチ……カチャリ。\n数字錠が 外れた！');F.gcode=1;return true;}
+    SND_('miss');attract();await hsay('ガチャ ガチャ……開かない。\n錠の音が 庭に 響いた。');}}
+
+/* 八つ当たり連携技（クリア演出） */
+function beatFx(){return new Promise(res=>{
+  const el=document.createElement('div');el.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none';
+  const stop=e=>{e.stopPropagation();e.preventDefault();};['click','touchstart','touchend','pointerdown','keydown','keyup'].forEach(t=>el.addEventListener(t,stop,true));
+  const kb=e=>{e.stopPropagation();e.preventDefault();};window.addEventListener('keydown',kb,true);
+  const cv=document.createElement('canvas');cv.width=240;cv.height=176;cv.style.cssText='width:min(100vw,136vh);image-rendering:pixelated;background:#000';el.appendChild(cv);document.body.appendChild(el);
+  const g=cv.getContext('2d');g.imageSmoothingEnabled=false;
+  const SP=id=>{let c=null;try{c=sprCanvas(id,'q4',null,32,48);}catch(e){}return c;};
+  const S={mag:SP('mag'),kj:SP('kojiro'),ge:SP('gerarin'),kk:SP('kakiume')};
+  const K=(ms,a,b)=>Math.max(0,Math.min(1,(ms-a)/(b-a)));
+  const T=(t,x,y,sz,col,al,st,lw)=>{if(al<=0)return;g.save();g.globalAlpha=Math.min(1,al);g.font=`bold ${sz}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.lineWidth=lw||4;g.strokeStyle=st||'#2a1a40';g.strokeText(t,x,y);g.fillStyle=col;g.fillText(t,x,y);g.restore();};
+  const glow=(x,y,r,col,al)=>{if(al<=0)return;g.save();g.globalAlpha=Math.min(1,al);const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,col);gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);g.restore();};
+  const spr=(c,x,y,o)=>{if(!c)return;o=o||{};g.save();g.translate(x,y);if(o.rot)g.rotate(o.rot);if(o.flip)g.scale(-1,1);if(o.sq)g.scale(1+o.sq,1-o.sq);g.globalAlpha=o.a===undefined?1:o.a;g.drawImage(c,-16,-48,32,48);
+    if(o.hurt>0){const t=document.createElement('canvas');t.width=32;t.height=48;const q=t.getContext('2d');q.drawImage(c,0,0,32,48);q.globalCompositeOperation='source-atop';q.fillStyle='rgba(140,70,210,'+o.hurt+')';q.fillRect(0,0,32,48);g.drawImage(t,-16,-48);}
+    g.restore();};
+  const shadow=(x,y,w)=>{g.fillStyle='rgba(0,0,0,.3)';g.beginPath();g.ellipse(x,y,w,3,0,0,6.283);g.fill();};
+  const burst=(x,y,r,col)=>{g.save();g.fillStyle=col;g.beginPath();for(let i=0;i<16;i++){const a=i/16*6.283,rr=i%2?r*.5:r;g.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);}g.closePath();g.fill();g.restore();};
+  const slash=(x,y,al)=>{g.save();g.globalAlpha=al;g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.moveTo(x-16,y-14);g.lineTo(x+16,y+14);g.moveTo(x+16,y-14);g.lineTo(x-16,y+14);g.stroke();g.strokeStyle='#8ae0ff';g.lineWidth=1;g.beginPath();g.moveTo(x-14,y-16);g.lineTo(x+14,y+16);g.stroke();g.restore();};
+  const LINES=[
+   [300,2200,'カキウメ「ま、待つなり！ なんで 囲まれてるなり！？」'],
+   [2200,3600,'げらりん「ずっと 隠れてたせいで 寿命が 縮んだんだが？」'],
+   [3600,4800,'マグ「……八つ当たりだ」　コジロー「付き合え」']];
+  const t0=performance.now(),DUR=23000;let sf={};const once=(k,f)=>{if(!sf[k]){sf[k]=1;try{f();}catch(e){}}};
+  const KK={x:120,y:110},MG={x:64,y:104},KJ={x:176,y:104},GE={x:120,y:146};
+  const step=()=>{const ms=performance.now()-t0;
+    if(ms>DUR){window.removeEventListener('keydown',kb,true);el.remove();res();return;}
+    /* 背景：夜明けの空と庭 */
+    const sky=g.createLinearGradient(0,0,0,110);sky.addColorStop(0,ms<14500?'#7aa8e8':'#10183a');sky.addColorStop(1,ms<14500?'#ffd8b8':'#2a3a78');g.fillStyle=sky;g.fillRect(0,0,240,176);
+    if(ms>=14500){g.fillStyle='#fff';for(let i=0;i<30;i++){g.globalAlpha=.4+.4*Math.sin(ms/200+i);g.fillRect((i*53)%240,(i*29)%100,1,1);}g.globalAlpha=1;}
+    g.fillStyle='#4a8a4a';g.fillRect(0,100,240,76);g.fillStyle='#3a7a3a';for(let i=0;i<14;i++)g.fillRect((i*37)%240,108+(i*17)%60,6,2);
+    g.fillStyle='#2a2a30';g.fillRect(96,56,6,46);g.fillRect(138,56,6,46);g.fillRect(96,52,48,5);
+    /* キャラ */
+    let kk={x:KK.x,y:KK.y,rot:0,sq:0,hurt:0,a:1},mg={x:MG.x,y:MG.y,flip:0},kj={x:KJ.x,y:KJ.y,flip:1},ge={x:GE.x,y:GE.y};
+    const hit=ms>4800&&ms<10200;
+    if(ms<4800){const c=K(ms,0,1200);mg.x=MG.x-24*(1-c);kj.x=KJ.x+24*(1-c);ge.y=GE.y+18*(1-c);}
+    if(ms>=4800&&ms<10200){const ph=Math.floor((ms-4800)/360)%6;const w=((ms-4800)%360)/360,dash=Math.sin(w*Math.PI);
+      if(ph===0||ph===3||ph===5){mg.x=MG.x+(KK.x-MG.x-22)*dash;}
+      if(ph===1||ph===3||ph===5){kj.x=KJ.x+(KK.x-KJ.x+22)*dash;}
+      if(ph===2||ph===4||ph===5){ge.x=GE.x;ge.y=GE.y+(KK.y+4-GE.y)*dash*.7;}
+      kk.x=KK.x+(Math.random()-.5)*7;kk.y=KK.y+(Math.random()-.5)*3;kk.sq=.12*Math.sin(ms/40);kk.hurt=Math.min(.7,(ms-4800)/6500);
+      if(w<.1)once('s'+Math.floor((ms-4800)/360),()=>SND_(ph%2?'crit':'tick'));}
+    if(ms>=10200&&ms<12200){kk.rot=1.45;kk.hurt=.7;kk.y=KK.y+2;kk.x=KK.x;}
+    /* 仕上げ：ストライク */
+    let ge2=ge;
+    if(ms>=12200&&ms<14500){kk.rot=1.45;kk.hurt=.7;kk.y=KK.y+2;kk.x=KK.x;const d=K(ms,13000,13700);ge.x=GE.x-6+d*(KK.x-28-(GE.x-6));ge.y=GE.y+(KK.y+4-GE.y)*d;if(ms<13000){ge.x=GE.x-6;ge.y=GE.y-3*Math.sin(ms/40);}}
+    if(ms>=14500){const f=K(ms,14500,17500);kk.rot=1.45+f*14;kk.x=KK.x+f*(300-KK.x)*.9;kk.y=KK.y-f*160+f*f*20;kk.hurt=.7;kk.a=1-K(ms,17000,17600);ge.x=KK.x-28;ge.y=KK.y+4;}
+    const L=[[mg,S.mag,'mg'],[kj,S.kj,'kj'],[ge,S.ge,'ge'],[kk,S.kk,'kk']].sort((a,b)=>a[0].y-b[0].y);
+    L.forEach(([o,c,k])=>{shadow(o.x,o.y,10);spr(c,o.x,o.y,k==='kk'?o:{flip:o.flip});});
+    /* エフェクト */
+    if(hit){const ph=Math.floor((ms-4800)/360)%6,w=((ms-4800)%360)/360;
+      if(w>.35&&w<.8){const al=1-(w-.35)/.45;
+        if(ph===0||ph===3||ph===5){slash(KK.x-12,KK.y-26,al);T('ズバッ！',KK.x-40,KK.y-48,10,'#8ae0ff',al);}
+        if(ph===1||ph===3||ph===5){burst(KK.x+14,KK.y-24,13*al+4,'#ffb030');T('ドゴッ！',KK.x+46,KK.y-50,10,'#ffd060',al);}
+        if(ph===2||ph===4||ph===5){burst(KK.x,KK.y-8,11*al+3,'#fff2c0');T('バキッ！',KK.x+2,KK.y-56,10,'#ffffff',al);}}}
+    /* セリフ・バナー */
+    LINES.forEach(([a,b,t])=>{if(ms>=a&&ms<b){g.fillStyle='rgba(10,10,30,.8)';g.fillRect(8,150,224,20);g.strokeStyle='#8a80b0';g.strokeRect(8.5,150.5,223,19);T(t,120,160,9,'#fff',1,'#000',2);}});
+    if(ms>4800&&ms<10500){const al=K(ms,4800,5100)*(ms<9800?1:1-K(ms,9800,10500));T('連携技',120,18,11,'#ffe080',al,'#401060');T('絆ノ四重奏・八つ当たり',120,32,13,'#ffffff',al,'#8a1030');}
+    if(ms>=10300&&ms<12000){g.fillStyle='rgba(10,10,30,.8)';g.fillRect(8,150,224,20);T('カキウメ「…………なり……」',120,160,9,'#fff',1,'#000',2);}
+    if(ms>=12000&&ms<14300){g.fillStyle='rgba(10,10,30,.8)';g.fillRect(8,150,224,20);T(ms<13000?'げらりん「限りなく ボコボコに したな。……仕上げだ」':'げらりん「限界なんて――ぶち抜くためにある！！」',120,160,8.5,'#ffe9a0',1,'#000',2);}
+    if(ms>13700&&ms<14700){once('st',()=>{SND_('warn');SND_('crit');});const n=K(ms,13700,14100);g.save();g.globalAlpha=(1-K(ms,14100,14700))*.95;const gr=g.createRadialGradient(KK.x,KK.y-20,0,KK.x,KK.y-20,10+240*n);gr.addColorStop(0,'#fff');gr.addColorStop(.5,'#ffd060');gr.addColorStop(1,'rgba(255,160,40,0)');g.fillStyle=gr;g.fillRect(0,0,240,176);g.restore();}
+    if(ms>14500)T('限界突破ストライク！！',120,150,15,'#ffffff',K(ms,14700,15000)*(ms<17800?1:1-K(ms,17800,18400)),'#1a60c0');
+    if(ms>17400){once('star',()=>SND_('win'));const a=K(ms,17400,17800);glow(200,24,26,'#fff7b0',a);g.save();g.globalAlpha=a*(.7+.3*Math.sin(ms/90));g.fillStyle='#fff7a0';g.beginPath();for(let i=0;i<10;i++){const an=i/10*6.283-1.57,rr=i%2?3:7;g.lineTo(200+Math.cos(an)*rr,24+Math.sin(an)*rr);}g.closePath();g.fill();g.restore();T('キラーン☆',200,44,9,'#fff7a0',a,'#203080',2);}
+    if(ms>18400&&ms<20000){T('カキウメ「なりぃぃぃぃぃ〜〜〜……！」',120,80,9,'#ffffff',K(ms,18400,18800)*(1-K(ms,19600,20000)),'#203080',2);}
+
+    if(ms>18500){const MT=[[18700,40,122,0],[19000,92,134,1],[19300,142,128,0],[19600,196,140,0],[19850,66,146,0],[20100,166,152,1]];
+      const mi=(typeof MON_IMG!=='undefined'&&MON_IMG.complete&&MON_IMG.naturalWidth)?MON_IMG:null;
+      if(mi&&!window._beatPur){const c=document.createElement('canvas');c.width=mi.naturalWidth;c.height=mi.naturalHeight;const q=c.getContext('2d');q.drawImage(mi,0,0);q.globalCompositeOperation='source-atop';q.fillStyle='rgba(150,60,230,.55)';q.fillRect(0,0,c.width,c.height);window._beatPur=c;}
+      MT.forEach(([st,x,gy,pu],i)=>{if(ms<st)return;const k=Math.min(1,(ms-st)/420),y=-40+(gy+40)*k*k,land=ms>=st+420;
+        if(land)once('l'+i,()=>{SND_('warn');SND_('tick');});
+        const W=44,Hh=mi?Math.round(W*(mi.naturalHeight/mi.naturalWidth)):50;
+        g.fillStyle='rgba(0,0,0,.35)';g.beginPath();g.ellipse(x,gy,12,3,0,0,6.283);g.fill();
+        if(mi)g.drawImage(pu?window._beatPur:mi,x-W/2,y-Hh+3,W,Hh);
+        if(land&&ms<st+700){const w=(ms-st-420)/280;T('ドスン！',x,gy-Hh-4,8,'#ffffff',1-w,'#401020',2);}});}
+    if(ms>20700&&ms<21900){g.fillStyle='rgba(10,10,30,.8)';g.fillRect(8,150,224,20);T('げらりん「……ちょっと待て。あれは 本物では？」',120,160,8.5,'#fff',1,'#000',2);}
+    if(ms>21800){g.fillStyle=`rgba(0,0,0,${K(ms,21800,22900)})`;g.fillRect(0,0,240,176);}
+    requestAnimationFrame(step);};
+  step();});}
+
+/* --- ストーリー演出 --- */
+const regroup=async()=>{
+  F.nd.rm=1;F.nd.rk=1;
+  await hsay('コジロー「げらりん！ ……無事だったか。カキウメは どうした」\n（げらりんは 黙って、首を 横に 振った）');
+  await hsay('コジロー「……っ！ 嘘だろ……！ 肝試しじゃ なかったのか……これは……！」\nマグ「……落ち着け。取り乱しても 犠牲が 増えるだけだ」');
+  await hsay('マグ「カキウメの 分まで、必ず ここを 出る。……それが 俺たちの 答えだ」\nコジロー「……ああ。やってやる。ここで 止まったら あいつに 顔向け できねぇ」');
+  await hsay('マグ「この部屋に 金庫が ある。……それと、紫の影は 足音で 寄ってくる。\n 走るなら 覚悟して 走れ」');};
+async function sceneIntro(){
+  HR.pause=true;
+  HR.sc=[{id:'kakiume',x:6*TS,y:9*TS,dir:'up'},{id:'kojiro',x:9*TS,y:8*TS,dir:'left'},{id:'mag',x:8*TS,y:9*TS,dir:'up'}];
+  await csay('——10月21日。夜。\n山奥の 古い洋館。\nげらりんは マグ・コジロー・カキウメと、\n「肝試し」に やってきた。');
+  await csay('カキウメ「む、むりなり……！ やっぱり 帰るなり……！\n ぜったい なんか いるなり……！」\n（ペンギンの 着ぐるみが ガタガタ ふるえている）');
+  await csay('コジロー「フン、肝試しごときで 何を 怯えている。\n 幽霊だろうが 化け物だろうが、俺の 拳で 十分だ」');
+  await csay('マグ「……入るぞ。もう 約束は してしまった」');
+  SND_('door');shk(500);P.shake=.6;
+  await csay('——バタン！！\n背後で、玄関の扉が ひとりでに 閉まった。');
+  await csay('カキウメ「ひぃぃっ！！ 閉まったなり〜〜〜っ！！」\nコジロー「……風だ」\nマグ「……鍵が かかっている。手分けして 出口を 探そう」');
+  await csay('カキウメ「ひとりは いやなり〜〜〜！！」\n……そう 叫ぶ 声が、廊下の 奥へ 遠ざかっていった。');
+  HR.sc=[];P.fade=.5;}
+async function sceneKakiume(){
+  HR.pause=true;
+  const kk={id:'kakiume',x:14*TS,y:5*TS,dir:'left'},oni={mon:1,x:15*TS+8,y:5*TS+14};
+  HR.sc=[kk];
+  await csay('……ガタン。\nバタバタバタッ！！\n誰かが 全力で 走ってくる 足音。');
+  SND_('door');
+  await mvT(kk,11*TS,5*TS,700);
+  await csay('カキウメ「げらりぃぃぃん〜〜〜っ！！\n たすけてぇぇぇなりぃぃぃぃ〜〜〜っ！！」');
+  HR.sc.push(oni);SND_('warn');shk(600);
+  await mvT(oni,14*TS,5*TS+14,500);
+  await mvT(kk,10*TS,4*TS,450);
+  kk.rot=1.4;kk.run=0;SND_('miss');
+  await csay('カキウメ「ぎゃんっ！！」\n（カキウメが 盛大に 転んだ！）');
+  await csay('カキウメ「あしが……あしがぁぁ……！\n げらりん、げらりぃぃん……！ たすけて……！！」\n（足が すくんで、動けない……）');
+  await mvT(oni,11*TS+8,4*TS+14,1100);
+  P.shake=.7;SND_('warn');
+  await csay('カキウメ「いやぁぁぁぁぁぁぁっ！！\n いきたいぃぃぃぃぃ！！\n わたしもっ！ つれてってぇぇぇぇぇぇ！！」');
+  flashFx(1);SND_('crit');shk(700);
+  kk.alpha=0;await wait(250);HR.sc=HR.sc.filter(o=>o!==kk);
+  await csay('——悲鳴が、ぷつりと 途切れた。\n暗闇の 中に、ペンギンの 帽子が ぽとりと 落ちた。');
+  F.kkDead=1;
+  oni.x=11*TS+8;
+  await csay('青い影が、ゆっくりと こちらを 振り向いた——。');
+  HR.sc=[];
+  /* 鬼 起動 */
+  F.awake=1;M.active=1;M.room='bath';M.x=oni.x;M.y=4*TS+14;M.pend=null;M.lost=0;M.grace=1.4;M.speed=baseSpd(M);M.path=null;
+  const m2=MS[1];m2.active=1;m2.smart=1;m2.room='nursery';m2.x=7*TS+8;m2.y=5*TS+12;m2.pend=null;m2.lost=0;m2.grace=9;m2.speed=baseSpd(m2);
+  P.safe=1.6;HR.pause=false;}
+async function sceneMag(){
+  HR.pause=true;
+  const mg={id:'mag',x:4*TS,y:3*TS,dir:'down'},kj={id:'kojiro',x:3*TS,y:3*TS,dir:'down'},oni={mon:1,x:15*TS+8,y:5*TS+14};
+  HR.sc=[mg,kj];P.dir='right';
+  await csay('——ギィ……。\n背後で、重い 扉が 開く 音が した。');
+  HR.sc.push(oni);SND_('warn');shk(500);
+  await mvT(oni,14*TS+8,5*TS+14,600);
+  await csay('コジロー「……チッ。出口は あの 扉 ひとつ だけだぞ」\nマグ「……万事休す、か」');
+  await csay('マグ「コジロー。げらりんを 連れて 行け。……俺が 引きつける」\nコジロー「バカを 言うな！ 俺が 残る！ お前こそ——」');
+  await csay('マグ「お前の 拳は、まだ 要る。……行け」\nコジロー「…………っ。死ぬなよ、マグ」');
+  mg.dir='right';
+  await mvT(mg,10*TS,7*TS,700);
+  await csay('マグ「こっちだ、化け物！！」');
+  oni.run=1;await mvT(oni,11*TS,7*TS+14,900);
+  /* 二人 脱出（自動操作） */
+  P.dir='up';
+  await Promise.all([mvT(P,3*TS,4*TS,500).then(()=>mvT(P,13*TS,4*TS,1100)).then(()=>mvT(P,14*TS,5*TS,200)),
+                     mvT(kj,2*TS,4*TS,500).then(()=>mvT(kj,12*TS,4*TS,1100)).then(()=>mvT(kj,14*TS,5*TS,300))]);
+  F.mgDead=1;F.mgBlock=1;F.mgAt=puzCount();F.kjWith=1;
+  M.active=1;M.busy=1;M.room='bedroom';M.pend=null;M.x=11*TS;M.y=7*TS+14;
+  HR.sc=[];
+  P.room='corr2';P.x=1*TS;P.y=5*TS;P.dir='right';P.trail=[];P.fade=.5;P.safe=1.5;SND_('door');
+  await csay('扉が 閉まる。\n中から、激しい 物音と——マグの 声が 聞こえた。\nマグ「……いけ。振り返るな」');
+  await csay('コジロー「……クソッ。あいつ……！\n 行くぞ、げらりん。絶対に 無駄に するな」');
+  HR.pause=false;}
+async function mgRelease(){
+  HR.pause=true;SND_('warn');shk(900);
+  await csay('……ドンッ！！\n屋敷の どこかで、扉が 破られる 音が した。\n（——寝室の 物音が、止んだ）');
+  F.mgFree=1;M.busy=0;M.room='bedroom';M.pend=null;M.lost=0;M.path=null;M.x=13*TS;M.y=5*TS+14;M.grace=3;sepMons();
+  HR.pause=false;}
+function sepMons(){if(!HR.hard)return;const a=MS[0],b=MS[1];if(!a.active||!b.active||a.pend||b.pend||a.room!==b.room)return;
+  const ds=Object.keys(ROOMS).filter(r=>r!==a.room&&r!==P.room&&roomDist(r,a.room)<99).sort((x,y)=>roomDist(y,a.room)-roomDist(x,a.room));
+  if(!ds.length)return;b.room=ds[0];b.x=8*TS;b.y=5*TS+12;b.pend=null;b.path=null;b.lost=0;b.grace=Math.max(b.grace||0,6);}
+async function sceneKojiro(){
+  HR.pause=true;
+  const f0=followerPos()||{x:P.x-12,y:P.y};
+  P.x=7*TS;P.y=9*TS;P.dir='down';P.hidden=0;P.trail=[];
+  const kj={id:'kojiro',x:6*TS,y:9*TS,dir:'down'};F.kjWith=0;HR.sc=[kj];
+  await csay('玄関の 扉の 前に 立った。\n門の鍵を 鍵穴に 差し込む……。');
+  SND_('tick');await csay('ガチャ……ガチャガチャ。\n（手が 震えて、鍵が うまく 入らない！）');
+  const b={mon:1,x:-12,y:5*TS+14},pu={mon:1,tint:1,x:16*TS,y:5*TS+14};
+  HR.sc.push(b,pu);SND_('warn');shk(600);
+  await Promise.all([mvT(b,3*TS,6*TS+14,1400),mvT(pu,12*TS,6*TS+14,1700)]);
+  await csay('コジロー「……おい。後ろだ」\n青い影と 紫の影が、左右から 迫ってくる。');
+  await csay('げらりん「まって、あと少し……あと少しで 開く……っ！」\nコジロー「……もういい。鍵は お前が 開けろ。時間は 俺が 稼ぐ」');
+  await csay('コジロー「肝試しなんて 言い出したのは 俺だったな。\n ……責任は、取る」');
+  kj.dir='left';await mvT(kj,5*TS,7*TS,500);
+  await csay('コジロー「うおおおおおおっ！！\n 俺の 拳を 喰らえェェェェ！！」');
+  flashFx(1);SND_('crit');shk(700);
+  await mvT(b,-40,3*TS,260);
+  await csay('ドゴォォォンッ！！\n青い影が、壁まで 吹き飛んだ！');
+  kj.dir='right';await mvT(pu,7*TS,7*TS+14,450);
+  flashFx(1);SND_('crit');shk(700);
+  await mvT(pu,17*TS,3*TS,260);
+  await csay('コジロー「もう一発 だッ！！」\nドゴォォォンッ！！ 紫の影も 吹き飛んだ！');
+  await csay('……だが。\n殴った 拳が 青い 靄に 触れた 瞬間——\nコジローの 腕が、じわりと 青黒く 染まっていく。');
+  await csay('コジロー「……ぐ……っ。触れた だけで……これか」\nコジロー「……行け、げらりん。……振り返る、な……」');
+  kj.rot=1.5;SND_('miss');
+  await csay('ドサッ。\nコジローは、そのまま 動かなくなった。');
+  F.kjDead=1;F.kjWith=0;
+  await csay('……ガチャリ。\nようやく 鍵が 回った。\nげらりんは 涙を こらえて、扉を 押し開けた。');
+  HR.sc=[];
+  forMons(m=>{if(m.active){m.pend=null;m.room='hall';m.path=null;m.grace=10;}});MS[0].room='garden';MS[0].x=1*TS+8;MS[0].y=9*TS+12;MS[0].grace=3.5;MS[0].gs=9;MS[1].x=13*TS;MS[1].y=5*TS;
+  await sceneMagOni();}
+async function sceneMagOni(){
+  P.room='garden';P.x=7*TS;P.y=1*TS;P.dir='down';P.trail=[];P.fade=.6;P.safe=2;P.hidden=0;SND_('door');
+  const mg={id:'mag',blue:1,x:13*TS,y:2*TS,dir:'left'};HR.sc=[mg];
+  await csay('夜風が 吹く 庭。……門は、遠い。\nそのとき、闇の 向こうに 見慣れた 人影が 立っていた。');
+  mg.run=1;await mvT(mg,9*TS,2*TS,1400);mg.run=0;
+  await csay('マグ「……げらりん」\n（その瞳は 青く 濁っていた）');
+  await csay('マグ「いっしょに 行こう。……みんな、待っている」');
+  await csay('げらりん「いや お前 死んだはず だろ」');
+  await csay('げらりん「青鬼だと、死んだ 仲間は 鬼に なって 出てくる。\n お前も 鬼に なってるな？ ——だったら、潰すわ」');
+  HR.sc=[];
+  await strikeFx();
+  mg.x=9*TS;mg.y=2*TS;HR.sc=[];
+  await csay('ドゴォォォォォンッ！！！\n青く 濁った マグは、夜空の 彼方へ 吹き飛んでいった。');
+  await csay('……不思議と、胸の 奥が 少しだけ 軽く なった。\n（さよなら、青鬼）');
+  HR.pause=false;}
+const NPC=[
+ {k:'kk',id:'kakiume',room:'dining',x:3,y:6,cond:()=>!HR.hard,
+  async talk(n){
+   if(HR.hard){
+    await hsay('カキウメ「……げらりん……？ 本物、なり……？」\n（ペンギンの 着ぐるみが 小刻みに ふるえている）');
+    await hsay('カキウメ「さっき、紫色の……こわいのを 見たなり。\n 走ると 足音で 気づかれるなり。……ぺた、ぺた、で 歩くなり」');
+    await hsay('カキウメ「マグも コジローも、はぐれたなり……\n みんなで 出るなり、げらりん！」');
+   }else{
+    await hsay('カキウメ「あっ……げらりん……！ よかった、なり……！」\n（ペンギンの 着ぐるみが ぺたぺたと 駆け寄ってきた）');
+    await hsay('カキウメ「ここ、へんなのが いるなり。マグも コジローも ばらばらに なっちゃったなり……」');
+    await hsay('カキウメ「あの 壁の時計、ずっと 7時25分で 止まってるなり。\n ……なんだか、気になるなり」');
+   }
+   await hsay('カキウメ「カキウメは 向こうを 見てくるなり。げらりんも 気を つけるなり……！」\nぺたぺた……と、暗がりに 消えていった。');}},
+ {k:'kj',id:'kojiro',room:'library',x:6,y:3,cond:()=>!HR.hard&&!!F.awake,
+  async talk(n){
+   await hsay('コジロー「……げらりんか。無事で 何よりだ」\n（腰の 刀に 手を かけたまま、周囲を 警戒している）');
+   if(HR.hard){
+    await hsay('コジロー「影は ふたつ。青いのは 足が 遅いが、紫のは 賢い。\n 隠れた 場所を 覚えている。同じ 物陰は 二度と 使うな」');
+    await hsay('コジロー「この屋敷には まだ 奥が ある。礼拝堂と、屋根裏だ。\n ……鍵は そこだ」');
+   }else{
+    await hsay('コジロー「あれは 足音で 距離を 測り、隠れた者の 気配を 探る。\n 物陰に 長居は するな」');
+    await hsay('コジロー「斬れれば 話は 早いのだが……刀が 鞘から 抜けん。\n ふざけた 屋敷だ」');
+   }
+   await hsay('コジロー「先へ 行け。俺は 別の 道を 探る」\n音もなく、廊下の 闇へ 消えた。');}},
+ {k:'mg',id:'mag',room:'kitchen',x:8,y:3,cond:()=>!HR.hard&&!!F.cellar,
+  async talk(n){
+   const nc=(F.moon?1:0)+(F.sun?1:0)+(F.star?1:0);
+   await hsay('マグ「……来たか」\n（無口な 魔法剣士が、地下への 扉を 見つめている）');
+   await hsay('マグ「この先は 地下だ。祭壇に 紋章を 三つ 嵌める。\n 月・陽・星……いま 持っているのは '+nc+'つ だな」');
+   await hsay('マグ「祭壇の 鍵を 取れば、ヤツが 目を 覚ます。\n ……先に 行く、とは 言えない。だが 背中は 任せろ」');
+   P.st=100;await hsay('マグ「走れ。息が 切れたら、俺が 呼んでいる と 思え」\n（なんだか 力が わいてきた——スタミナが 全回復した！）\nマグは 静かに 闇に 溶けていった。');}},
+ {k:'rm',id:'mag',room:'bedroom',x:4,y:3,cond:()=>HR.hard&&!!F.kkDead&&!F.mgDead,talk:()=>regroup()},
+ {k:'rk',id:'kojiro',room:'bedroom',x:3,y:3,cond:()=>HR.hard&&!!F.kkDead&&!F.mgDead,talk:()=>regroup()}
+];
+const npcNow=()=>NPC.filter(n=>n.room===P.room&&!F.nd[n.k]&&n.cond());
+async function npcTalk(n){const dx=P.x+8-(n.x*TS+8),dy=P.y+12-(n.y*TS+10);n.dir=Math.abs(dx)>Math.abs(dy)?(dx<0?'left':'right'):(dy<0?'up':'down');SND_('sel');await n.talk(n);F.nd[n.k]=1;}
 const ACT={
  async clock(){F.clock=1;await hsay('壁掛け時計は 7時25分で 止まっている。\n針の下に 小さく 彫られている。\n「止まった時間が 鍵になる」');},
  async diary(){
@@ -16573,6 +17000,7 @@ const ACT={
   await hsay('——鏡の中に、誰かの 顔が いた。\n……見なかったことに しよう。');
   await hsay('カタン。鏡の裏から 銀色の鍵が 落ちてきた。');
   F.silver=1;SND_('chime');await hsay('【銀の鍵】を 手に入れた！');
+  if(HR.hard){await sceneKakiume();return;}
   await hsay('……ガタン。\n遠くで 何かが 動いた。\n「ウゥ……ァ……」');
   F.awake=1;M.active=1;M.room='hall';M.x=7*TS+8;M.y=5*TS+12;M.pend=null;M.lost=0;M.grace=6;SND_('warn');},
  async desk(){
@@ -16583,7 +17011,7 @@ const ACT={
   if(!F.clock){await hsay('頑丈な金庫だ。3桁の番号が 必要らしい。\n……心当たりが ない。');return;}
   await hsay('金庫だ。3桁の番号を 入れよう。');
   const d=[];for(let k=1;k<=3;k++){const i=await hchoose(`${k}桁目`,Array.from({length:10},(_,n)=>({l:String(n)})),{cancel:true});if(i<0)return;d.push(i);}
-  if(d.join('')==='725'){F.safe=1;F.cellar=1;SND_('chime');await hsay('カチッ。金庫が 開いた！\n【地下室の鍵】を 手に入れた！');await photoFlash('a',3200,'金庫の底に、なぜか 写真が 入っていた。');await hsay('猫を 抱いた 誰かの 写真だ……。\n意味は わからない。が、あたたかそうだ。');}
+  if(d.join('')==='725'){F.safe=1;F.cellar=1;SND_('chime');await hsay('カチッ。金庫が 開いた！\n【地下室の鍵】を 手に入れた！');await photoFlash('a',3200,'金庫の底に、なぜか 写真が 入っていた。');await hsay('猫を 抱いた 誰かの 写真だ……。\n意味は わからない。が、あたたかそうだ。');if(HR.hard&&F.kkDead&&!F.mgDead)await sceneMag();}
   else{SND_('miss');await hsay('ガチャ ガチャ……開かない。違うようだ。');}},
  async stove(){
   if(!F.diary){await hsay('コンロの上に 鍋が ひとつ。中身は カラッポだ。');return;}
@@ -16625,46 +17053,90 @@ const ACT={
   F.gate=1;F.final=1;SND_('chime');await hsay('【門の鍵】を 手に入れた！');
   SND_('warn');P.shake=1.2;
   await hsay('ズズ……ズズズズ……\n暗闇の奥から、青い影が ゆっくり 立ち上がった。');
-  M.active=1;M.room='basement';M.x=1*TS+8;M.y=9*TS+12;M.pend=null;M.lost=0;M.grace=1.2;M.speed=72;M.final=1;
+  M.active=1;M.room='basement';M.x=1*TS+8;M.y=9*TS+12;M.pend=null;M.lost=0;M.grace=1.2;M.speed=baseSpd(M);M.final=1;
+  if(HR.hard){const m2=MS[1];if(m2.active){m2.speed=baseSpd(m2);m2.heard=10;}sepMons();}
  }
 };
+const attract=()=>{forMons(m=>{if(!m.active)return;if(m.smart)m.heard=8;else m.lost=0;});};
+async function chainCheck(){if(F.chain1&&F.chain2&&!F.chains){F.chains=1;SND_('chime');await hsay('二つの 鎖の鍵が 揃った。\n庭の門を 開けられる……！\n（玄関の扉から 庭へ。門は 庭の 一番 奥だ）');}}
+async function chainGot(n){SND_('warn');P.shake=.9;attract();await hsay(n===1?'ガラスが 淡く 光り、足元の 床板が 外れた。\n【鎖の鍵・壱】を 手に入れた！\n……屋敷中に 音が 響いた気が する。':'トランクの 底から 錆びた 鍵が 出てきた。\n【鎖の鍵・弐】を 手に入れた！\n……屋敷中に 音が 響いた気が する。');if(n===1)await hsay(F.kkDead?'……ステンドグラスの 光の 中に、\nカキウメの 泣き顔が 一瞬 浮かんで——消えた。\n（……気の せい、だろうか）':'……カタ。\n懺悔室の 奥で、何かが 動いた気が する。');else await hsay(F.kjWith?'古い 衣装箱の 陰から、コジローが 顔を 出した。\nコジロー「人形は 動かん。そう 思っていたが……\n その鍵で 鎖は 解ける。庭の門へ 急げ」':'トランクの 底に、小さな 文字が 彫られていた。\n「ありがとう」\n……誰の 字だろう。');
+  await chainCheck();}
+Object.assign(ACT,{
+ ph1:()=>phLook(1),
+ ph2:()=>phLook(2),
+ ph3:()=>phLook(3),
+ ph4:()=>phLook(4),
+ ph5:()=>phLook(5),
+ ph6:()=>phLook(6),
+ ph7:()=>phLook(7),
+ ph8:()=>phLook(8),
+ gnote:()=>hsay('立て札に 彫られている。\n\n　「戦いの記録を 集めよ。\n　 写真の 左下の 数字は 並ぶ 順番。\n　 ひとつ ひとつの 戦の 番号を、\n　 その 順に 八つ 並べれば 門は 開く」'),
+ async hymn(){F.hymn=1;await hsay('古い 賛美歌集。栞が はさまれている。\n\n　「祈りは 夜明けから はじまる。\n　 日は のぼり、頂で 輝き、傾き、\n　 やがて 夜が 世界を 包む」');},
+ async glass(){
+  if(F.chain1){await hsay('ステンドグラスは もう 静かに 光っている。');return;}
+  await hsay('大きな ステンドグラス。5つの 絵が 並んでいる。\n　朝日・真昼の太陽・夕日・月・星\n触れる 順番に 意味が ありそうだ。');
+  const C=['朝日','真昼の太陽','夕日','月','星'],ans=[0,1,2,3],got=[];
+  for(let k=1;k<=4;k++){const i=await hchoose(`${k}番目`,C.map(n=>({l:n})),{cancel:true});if(i<0)return;got.push(i);SND_('tick');}
+  if(got.join()===ans.join()){F.chain1=1;await chainGot(1);}
+  else{SND_('miss');attract();await hsay('ステンドグラスが ぎらりと 赤く 光った。\n……ズン、と 足音が 近づいた気が する。');}},
+ async attnote(){await hsay('屋根裏の 机に メモが ある。\n\n　「庭の門には 二重の鎖。\n　 祈りの鍵と、人形の鍵。\n　 どちらも 揃わなければ 開かない」');},
+ async doll(){
+  if(!F.star){await hsay('埃を かぶった 人形。\n……目が、こちらを 見ている気が する。');return;}
+  F.doll=1;await hsay('人形の 胸に 小さな 札が 付いている。\n\n　「あの子の 星の 数字を\n　 さかさに 読んで」');
+  if(!F.dollScare){F.dollScare=1;await photoFlash('b',900,'',true);attract();await hsay('……人形の 首が、いつの間にか こちらを 向いていた。');}},
+ async trunk(){
+  if(F.chain2){await hsay('トランクは もう 空っぽだ。');return;}
+  await hsay('古い トランクだ。3桁の ダイヤルが ついている。');
+  const d=[];for(let k=1;k<=3;k++){const i=await hchoose(`${k}桁目`,Array.from({length:10},(_,n)=>({l:String(n)})),{cancel:true});if(i<0)return;d.push(i);}
+  if(d.join('')==='112'){F.chain2=1;SND_('chime');await chainGot(2);}
+  else{SND_('miss');attract();await hsay('ガチャ ガチャ……開かない。\n金具の音が 屋敷に 響いた。');}}
+});
 HR.ACT=ACT;HR.photoFlash=photoFlash;HR.ytPlay=ytPlay;
 
 /* --- ドア --- */
 async function useDoor(d,bx,by){
   const back=()=>{if(bx!==undefined){P.x=bx;P.y=by;}};
-  if(d.to==='exit'){
-    if(!F.gate){back();SND_('cancel');await hsay('玄関の扉は 固く 閉ざされている。\n（出口の鍵が 必要だ）');return;}
-    await win();return;}
-  if(d.lock&&!F[d.lock]){back();SND_('cancel');await hsay(d.lock==='silver'?'書斎の扉だ。鍵が かかっている。\n（銀色の鍵穴だ）':d.lock==='brass'?'応接間の扉だ。鍵が かかっている。\n（真鍮の鍵穴だ）':'重い扉だ。鍵が かかっている。\n（地下室の鍵が 必要だ）');
+  if(d.to==='exit'){const need=d.lock||'gate';
+    if(!F[need]){back();SND_('cancel');await hsay(need==='chains'?`庭の門には 二重の鎖が 巻かれている。\n（鎖の鍵が 2つ 必要だ：壱 ${F.chain1?'○':'×'}／弐 ${F.chain2?'○':'×'}）`:'玄関の扉は 固く 閉ざされている。\n（出口の鍵が 必要だ）');return;}
+    if(HR.hard&&P.room==='garden'&&!F.gcode){back();if(!(await gateCode()))return;}
+    await (HR.hard?winHard():win());return;}
+  if(HR.hard&&d.to==='bedroom'){const msg=!F.kkDead?'寝室の 扉だ。……中から、ひそひそと 話し声が する。\n（いまは 入る 気に なれない。先に 屋敷を 調べよう）':(F.mgBlock&&!F.mgFree?'扉の 向こうで、激しい 物音が 続いている……。\n（マグが 鬼を 引きつけている。今は 入れない）':null);
+    if(msg){back();SND_('cancel');await hsay(msg);return;}}
+  if(d.lock&&!F[d.lock]){back();SND_('cancel');await hsay(d.lock==='silver'?'書斎の扉だ。鍵が かかっている。\n（銀色の鍵穴だ）':d.lock==='brass'?'応接間の扉だ。鍵が かかっている。\n（真鍮の鍵穴だ）':d.lock==='gate'?'玄関の扉は 固く 閉ざされている。\n（出口の鍵が 必要だ）':'重い扉だ。鍵が かかっている。\n（地下室の鍵が 必要だ）');
     return;}
-  changeRoom(d);}
+  if(HR.hard&&d.to==='garden'&&!F.kjDead){await sceneKojiro();return;}
+  changeRoom(d);
+  if(HR.hard&&d.to==='bedroom'&&F.mgFree&&!F.mgSeen){F.mgSeen=1;await hsay('……部屋は、荒れ果てていた。\n床には 砕けた 黒い 剣の 欠片と、赤い 染み。\nマグの 姿は、どこにも なかった。');}}
 function changeRoom(d){
-  const old=P.room;
+  const old=P.room,hd=HR.hard;
   /* 鬼が同じ部屋にいて追っていたら、ドアまでの到達時間で追ってくる */
+  forMons(()=>{
   if(M.active&&M.room===old&&!M.pend){
     const R=ROOMS[old];const sp=M.speed;
     const pth=bfs(R,Math.floor(M.x/TS),Math.floor((M.y-2)/TS),d.x,d.y);
-    const eta=(pth?Math.max(.3,(pth.length-1)*TS/sp):1.2)+2.2; /* 扉を 開けて 追ってくるまでの 間（ロッカーに 隠れる 時間） */
+    const eta=(pth?Math.max(.3,(pth.length-1)*TS/sp):1.2)+(hd?1.5:2.2); /* 扉を 開けて 追ってくるまでの 間 */
     const dd=ROOMS[old].doors.find(q=>q===d);
     M.pend={t:eta,door:dd||d,from:old,x0:M.x,y0:M.y};
   }
   if(M.active&&M.pend&&M.pend.from===d.to){ /* 逆戻り：鬼が まだ向こうの部屋 */
-    const pd=M.pend;const frac=Math.max(0,pd.t)/Math.max(.3,pd.t+.001);
+    const pd=M.pend;
     M.room=d.to;M.pend=null;
-    /* ドアの近くに出る */
     M.x=d.tx*TS+8;M.y=d.ty*TS+12;if(pd.t>1.2&&pd.x0!==undefined){M.x=pd.x0;M.y=pd.y0;}
-  }
-  P.room=d.to;P.x=d.tx*TS;P.y=d.ty*TS;P.hidden=0;P.fade=.35;
-  /* 扉を入った直後は 少しの間 つかまらない（鬼が部屋に居ても、すぐ背後に出ても 逃げる時間を作る） */
-  P.safe=2.2;if(M.active&&M.room===P.room&&!M.pend)M.grace=Math.max(M.grace||0,1.6);
-  M.path=null;M.saw=0;SND_('door');
+  }});
+  P.room=d.to;P.x=d.tx*TS;P.y=d.ty*TS;P.hidden=0;P.fade=.35;P.trail=[];
+  /* 扉を入った直後は 少しの間 つかまらない */
+  P.safe=hd?1.2:2.2;
+  forMons(()=>{if(M.active&&M.room===P.room&&!M.pend)M.grace=Math.max(M.grace||0,hd?1.0:1.6);M.path=null;M.saw=0;});
+  SND_('door');
   if(d.tx===1)P.dir='right';else if(d.tx===13)P.dir='left';else if(d.ty===1)P.dir='down';else P.dir='up';
   if(ROOMS[P.room].fl==='stone'&&!P.sawBase){P.sawBase=1;}
 }
 /* --- 鬼の更新 --- */
-function monUpdate(dt){
-  if(!M.active)return;
+function monUpdate(dt){forMons(()=>monOne(dt));}
+function gLos(R,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,n=Math.floor(Math.hypot(dx,dy)/4);for(let i=1;i<n-4;i++){const x=ax+dx*i/n,y=ay+dy*i/n,gx=Math.floor(x/TS),gy=Math.floor(y/TS);if(R.g[gy]&&R.g[gy][gx]!==0)return false;}return true;}
+function monOne(dt){
+  if(!M.active||M.busy)return;
+  if(M.heard>0)M.heard-=dt;
   if(M.grace>0){M.grace-=dt;}
   const same=M.room===P.room&&!M.pend;
   if(M.pend){ /* 部屋を移動中（画面外） */
@@ -16676,17 +17148,23 @@ function monUpdate(dt){
   if(!same){
     /* 別の部屋：プレイヤーの部屋へ向かう（見失い中はうろつく） */
     if(M.grace>0)return;
-    M.hop=(M.hop===undefined?2.4:M.hop)-dt;
-    if(M.hop<=0){M.hop=2.4;
+    const HP=HR.hard?1.7:2.4;M.hop=(M.hop===undefined?HP:M.hop)-dt;
+    if(M.hop<=0){M.hop=HP;
       let d=null;
-      if(M.lost>0||P.hidden&&!M.saw){const ds=ROOMS[M.room].doors.filter(q=>q.to!=='exit');d=ds[Math.floor(Math.random()*ds.length)];}
+      if(M.lost>0||P.hidden&&!M.saw||(M.smart&&!(M.heard>0))){const ds=ROOMS[M.room].doors.filter(q=>q.to!=='exit');d=ds[Math.floor(Math.random()*ds.length)];}
       else d=nextDoor(M.room,P.room);
       if(d)M.pend={t:2.2,door:d,from:M.room};}
     M.lost=Math.max(0,M.lost-dt);return;}
   /* 同じ部屋 */
   const R=ROOMS[M.room];M.lost=Math.max(0,M.lost-dt);
   let tx,ty,mode='chase';
-  if(P.hidden&&!M.saw){mode='wander';}
+  const GD=M.room==='garden';
+  if(GD){const hd=M.hd||[0,1],ex=(P.x+8)-M.x,ey=(P.y+12)-M.y,dd=Math.hypot(ex,ey)||1;
+    const seen=dd<TS*1.3||(dd<TS*9&&(ex*hd[0]+ey*hd[1])/dd>.45&&gLos(R,M.x,M.y-2,P.x+8,P.y+10));
+    M.gs=seen?0:(M.gs===undefined?9:M.gs)+dt;
+    if(P.hidden){if(!M.hp)M.hfound=(M.gs<.6);M.hp=1;M.saw=M.hfound?1:0;if(!M.saw)mode='wander';}
+    else{M.hp=0;M.saw=0;mode=(M.gs<2.5)?'chase':'wander';}}
+  else if(P.hidden&&!M.saw){mode='wander';}
   if(M.lost>0&&!P.hidden)M.lost=0;
   if(M.grace>0)return;
   const mt=[Math.floor(M.x/TS),Math.floor((M.y-2)/TS)];
@@ -16695,11 +17173,12 @@ function monUpdate(dt){
     if(M.wanderT<=0){M.wanderT=2+Math.random()*2;
       /* しばらくうろついたら部屋を出ていく */
       M.stay=(M.stay||0)+1;
-      if(M.stay>=3){M.stay=0;const ds=R.doors.filter(q=>q.to!=='exit');const d=ds[Math.floor(Math.random()*ds.length)];
+      if(M.stay>=3&&!GD){M.stay=0;const ds=R.doors.filter(q=>q.to!=='exit');const d=ds[Math.floor(Math.random()*ds.length)];
         const pth=bfs(R,mt[0],mt[1],d.x,d.y);M.pend={t:pth?Math.max(.3,(pth.length-1)*TS/M.speed):1,door:d,from:M.room,x0:M.x,y0:M.y};M.lost=10;return;}
       let rx,ry,k=0;do{rx=1+Math.floor(Math.random()*13);ry=1+Math.floor(Math.random()*9);k++;}while(R.g[ry][rx]!==0&&k<30);
-      M.wp=[rx,ry];}
+      M.wp=[rx,ry];M.chk=null;if(M.smart&&!GD){const hs=R.objs.filter(o=>o.hide);if(hs.length&&Math.random()<.6){const o=hs[Math.floor(Math.random()*hs.length)],hx=Math.floor((o.x*TS+o.w*TS/2)/TS),hy=Math.min(RH-2,o.y+o.h);if(R.g[hy][hx]===0){M.wp=[hx,hy];M.chk=o;}}}}
     tx=M.wp?M.wp[0]:mt[0];ty=M.wp?M.wp[1]:mt[1];
+    if(M.chk&&P.hidden&&P.hideObj===M.chk){const dd=Math.hypot(M.x-(P.x+8),M.y-(P.y+12));if(dd<24){M.open=(M.open||0)+dt;if(M.open>1.0){M.open=0;caught(true);return;}}}
   } else {
     if(P.hidden&&M.saw){ /* 隠れ場所のそばまで来て開ける */
       const o=P.hideObj;tx=Math.floor((o.x*TS+o.w*TS/2)/TS);ty=Math.min(RH-2,o.y+o.h);if(R.g[ty][tx]!==0){tx=Math.floor((P.x+8)/TS);ty=Math.floor((P.y+12)/TS);}
@@ -16714,17 +17193,17 @@ function monUpdate(dt){
     let nxt=M.path[1];
     const wx=nxt[0]*TS+8,wy=nxt[1]*TS+14;
     const dx=wx-M.x,dy=wy-M.y,dist=Math.hypot(dx,dy);
-    const sp=M.speed*(1+Math.min(.18,(F.awake?(M.age=(M.age||0)+dt)/600:0)));
+    const sp=(GD&&mode==='wander')?60:M.speed*(M.smart&&HR.hard?1:(1+Math.min(.18,(F.awake?(M.age=(M.age||0)+dt)/600:0))));
     const stp=sp*dt;
     if(dist<=stp){M.x=wx;M.y=wy;M.path.shift();}
     else{M.x+=dx/dist*stp;M.y+=dy/dist*stp;}
-    M.face=dx<0?-1:1;M.step+=dt*8;
+    M.face=dx<0?-1:1;M.step+=dt*8;if(dist>.01)M.hd=[dx/dist,dy/dist];
     /* 足音 */
     M.fs=(M.fs||0)-dt;if(M.fs<=0){M.fs=.42;const dd=Math.hypot(M.x-(P.x+8),M.y-(P.y+12));SND_('tick',Math.max(.15,Math.min(1,1.2-dd/150)));}
   } else if(mode==='chase'&&Math.hypot(M.x-(P.x+8),M.y-(P.y+12))>10){
     const dx=(P.x+8)-M.x,dy=(P.y+12)-M.y,dist=Math.hypot(dx,dy)||1,stp=M.speed*dt;M.x+=dx/dist*stp;M.y+=dy/dist*stp;}
   /* 接触 */
-  if(!P.hidden&&!(P.safe>0)&&mode==='chase'&&Math.hypot(M.x-(P.x+8),(M.y-6)-(P.y+10))<10)caught(false);
+  if(!P.hidden&&!(P.safe>0)&&(mode==='chase'||GD)&&Math.hypot(M.x-(P.x+8),(M.y-6)-(P.y+10))<10)caught(false);
 }
 async function caught(fromCloset){
   if(P.dead)return;P.dead=1;HR.pause=true;
@@ -16732,14 +17211,41 @@ async function caught(fromCloset){
   const t0=performance.now();HR.scare=t0;SND_('crit');SND_('warn');
   await new Promise(r=>setTimeout(r,1500));
   HR.scare=0;
-  const i=await (async()=>{S.h=null;const r=await choose(fromCloset?'扉が 開いた——':'つかまった……',[{l:'もういちど（玄関から）'},{l:'あきらめて タイトルへ'}],{cancel:false});S.h=HR.h;return r;})();
+  const over=HR.hard&&F.deaths>=HLIFE();
+  const i=await (async()=>{S.h=null;const r=await choose(over?'ゲームオーバー……':(fromCloset?'扉が 開いた——':'つかまった……')+(HR.hard&&!over?`（残り ${HLIFE()-F.deaths}）`:''),over?[{l:'はじめから やりなおす'},{l:'あきらめて タイトルへ'}]:[{l:'もういちど（玄関から）'},{l:'あきらめて タイトルへ'}],{cancel:false});S.h=HR.h;return r;})();
   if(i===1){endGame();return;}
+  if(over){F=newF();MS.forEach(m=>{const sm=m.smart;Object.keys(m).forEach(k=>delete m[k]);Object.assign(m,mkMon({smart:sm}),{speed:0});m.speed=baseSpd(m);});HR.ev=null;P.hlog=[];}
   /* リスポーン：玄関ホール、鬼は一番遠い部屋へ */
   P.dead=0;P.room='hall';P.x=7*TS;P.y=8*TS;P.dir='up';P.hidden=0;P.st=100;P.fade=.6;
-  if(M.active){let best='study',bd=-1;Object.keys(ROOMS).forEach(r=>{const d=roomDist(r,'hall');if(d>bd){bd=d;best=r;}});
-    M.room=best;M.pend=null;M.lost=0;M.grace=8;M.path=null;M.x=8*TS;M.y=5*TS+12;M.speed=F.final?72:64;
-    if(F.final){M.room='bedroom';}}
-  HR.pause=false;}
+  let used=0;
+  forMons(()=>{if(!M.active)return;const ds=Object.keys(ROOMS).map(r=>[r,roomDist(r,'hall')]).filter(x=>x[1]<99).sort((a,b)=>b[1]-a[1]);
+    let best=(ds[Math.min(used,ds.length-1)]||['study'])[0];used++;
+    M.room=best;M.pend=null;M.lost=0;M.grace=8;M.path=null;M.x=8*TS;M.y=5*TS+12;M.speed=baseSpd(M);M.heard=0;
+    if(F.final&&!M.smart){M.room='bedroom';}});
+  sepMons();HR.pause=false;}
+async function winHard(){
+  HR.pause=true;P.fade=1;SND_('win');
+  await hsay('ガチャン——。\n二重の鎖が 音を たてて 落ちた。');
+  await hsay('庭の門が 開く。夜明けの 光の 中へ、\nげらりんは 走り抜けた。');
+  await hsay('背後で、二つの影が 静かに 立ち止まる。\n……そして、ゆっくりと 手を 振った 気が した。');
+  await hsay('——完全脱出！\nげらりんは 洋館の 裏の顔まで 暴いてみせた。');
+  await hsay('門の外に、見慣れた 三つの 影が 立っていた。\n……マグ、コジロー、カキウメ。\n（全員、足が ある。ちゃんと 生きている）');
+  await hsay('カキウメ「げらりぃぃん〜〜！ ほんとに 出てこれたなり〜〜！」\nカキウメ「わたし、ほんとに こわかったなり……ほんとに 転んだなり……！」');
+  await hsay('コジロー「……死んだ ふりは 性に 合わん。\n 殴った 腕が まだ しびれている」\nマグ「……青鬼に されるとは 思わなかった。よく 潰してくれた」');
+  await hsay('マグ「……ところで カキウメ。\n お前、ずいぶん 迫真の 演技 だったな」\nコジロー「ああ。……こっちは 本気で 泣きそうだった」');
+  await hsay('げらりん「……ちょっと 全員 集合。\n カキウメを 囲め」\nカキウメ「えっ」');
+  await beatFx();
+  await hsay('……カキウメは、夜明けの 空の 星に なった。\n（※ 無事です。そのうち 帰ってきます）');
+  await hsay('マグ「……すっきりした。帰ろう」\nコジロー「悪くない 夜だった」');
+  await hsay('……ふと、スマホが 震えた。\n誰かから ビデオメッセージが 届いている。');
+  await ytPlay(CLEAR_YT);
+  await hsay('「げらりん、お誕生日 おめでとう！！」\n10月21日。今日は、げらりんの 誕生日だ。');
+  try{PROF.stat=PROF.stat||{};if(HR.gm){const f1=!(PROF.stat.horrorGm|0);PROF.stat.horrorGm=(PROF.stat.horrorGm|0)+1;if(f1){PROF.gems=(PROF.gems|0)+3000;PROF.gold=(PROF.gold|0)+300000;saveProf();await hsay('げらりんモード 初クリアボーナス！\nジェム 3000 と 300000G を 手に入れた！\n称号「洋館の伝説」を 手に入れた！');}else{PROF.gems=(PROF.gems|0)+200;saveProf();await hsay('脱出ボーナス！ ジェム 200 を 手に入れた。');}}
+    const first=!(PROF.stat.horrorHard|0)&&!HR.gm;if(!HR.gm)PROF.stat.horrorHard=(PROF.stat.horrorHard|0)+1;else PROF.stat.horrorHard=(PROF.stat.horrorHard|0)+0;
+    if(first){PROF.gems=(PROF.gems|0)+1000;PROF.gold=(PROF.gold|0)+100000;saveProf();await hsay('高難易度の 初クリアボーナス！\nジェム 1000 と 100000G を 手に入れた！\n称号「裏の洋館の主」を 手に入れた！');}
+    else if(!HR.gm){PROF.gems=(PROF.gems|0)+100;saveProf();await hsay('脱出ボーナス！ ジェム 100 を 手に入れた。');}}catch(e){}
+  try{checkTitles();}catch(e){}
+  endGame();}
 async function win(){
   HR.pause=true;P.fade=1;SND_('chime');
   await hsay('カチャリ。\n門の鍵が 玄関の扉に 吸い込まれていく——。');
@@ -16750,6 +17256,11 @@ async function win(){
   await ytPlay(CLEAR_YT);
   await hsay('玄関の外では、みんなが 待っていた。\nクラッカーの音と 一緒に——');
   await hsay('「げらりん、お誕生日 おめでとう！！」\n10月21日。今日は、げらりんの 誕生日だ。');
+  await hsay('マグ「……誕生日、おめでとう」\nコジロー「驚かせて すまなかった。……だが、悪くない 顔だ」');
+  await hsay('カキウメ「ずっと 隠れてたなり……！ ぺたぺた、疲れたなり」\nカキウメ「ケーキ、あるなり！ みんなで 食べるなり！」');
+  await hsay('げらりん「……ところで カキウメ。\n ずっと 隠れてた 間に 寿命が 縮んだんだが？」\nカキウメ「えっ」');
+  await beatFx();
+  await hsay('……カキウメは、朝の 空の 星に なった。\n（※ 無事です。ケーキの時間には 帰ってきます）');
   SND_('win');await hsay('……そう。これは ぜんぶ、\nげらりんの ための サプライズだった。\n（青い影も ちゃんと 笑っていた）');
   await photoFlash('a',3600,'げらりん、お誕生日 おめでとう！\n10/21');
   try{PROF.stat=PROF.stat||{};const first=!(PROF.stat.horror|0);PROF.stat.horror=(PROF.stat.horror|0)+1;
@@ -16768,7 +17279,7 @@ function chaseBgm(want,force){
   }catch(e){}
 }
 function chaseTick(dt){
-  const chasing=M.active&&!P.dead&&!P.hidden&&M.room===P.room&&!M.pend&&!(M.grace>0)&&!HR.pause;
+  const chasing=MS.some(m=>m.active)&&MS.some(m=>m.active&&m.room===P.room&&!m.pend&&!(m.grace>0))&&!P.dead&&!P.hidden&&!HR.pause;
   if(chasing)chaseBgm(true);
   else if(cOn){cLose+=dt;if(P.dead||cLose>3){chaseBgm(false,true);}else if(cAud){cAud.volume=Math.max(0,.7*(1-Math.max(0,cLose-1.5)/1.5));}}
   if(cOn&&chasing&&cAud)cAud.volume=Math.min(.7,cAud.volume+dt*.8);
@@ -16781,15 +17292,28 @@ function loop(now){
   chaseTick(dt);
   draw(now);
 }
+function hardEvents(dt){
+  const E=HR.ev||(HR.ev={fl:18+Math.random()*20,sn:25+Math.random()*25,gh:45+Math.random()*45,flick:0,toast:null,ghost:null});
+  E.flick=Math.max(0,E.flick-dt);
+  if(E.toast){E.toast.t-=dt;if(E.toast.t<=0)E.toast=null;}
+  if(E.ghost){E.ghost.t-=dt;if(E.ghost.t<=0)E.ghost=null;}
+  if((E.fl-=dt)<=0){E.fl=22+Math.random()*35;E.flick=.6;SND_('tick',.6);}
+  if((E.sn-=dt)<=0){E.sn=30+Math.random()*40;const T=['……どこかで ドアが きしむ音。','……天井が ミシ、と 鳴った。','……誰かが 耳元で 囁いた気が する。','……遠くで 何かを 引きずる音。','……背後で 小さな 笑い声が した。'];
+    E.toast={s:T[Math.floor(Math.random()*T.length)],t:3};SND_(Math.random()<.5?'door':'warn',.35);}
+  if((E.gh-=dt)<=0){E.gh=60+Math.random()*60;if(!P.hidden){const side=Math.random()<.5?1:-1;E.ghost={x:Math.max(20,Math.min(SW-20,P.x+8+side*(40+Math.random()*30))),y:Math.max(40,Math.min(SH-10,P.y+22-Math.random()*20)),t:.7};SND_('warn',.5);}}
+}
 function update(dt){
   const R=ROOMS[P.room];
   P.fade=Math.max(0,P.fade-dt);P.safe=Math.max(0,(P.safe||0)-dt);P.shake=Math.max(0,P.shake-dt);
+  if(HR.hard)hardEvents(dt);
+  if(HR.hard&&F.mgBlock&&!F.mgFree&&puzCount()>F.mgAt&&!HR.pause){F.mgFree=1;mgRelease();}
   if(P.hidden){P.st=Math.min(100,P.st+30*dt);monUpdate(dt);return;}
   const dirs=held.filter(k=>k!=='cancel'&&dirV[k]);
   let vx=0,vy=0;
   if(dirs.length){const d=dirs[dirs.length-1];P.dir=d;vx=dirV[d][0];vy=dirV[d][1];}
-  const dash=held.includes('cancel')&&P.st>0&&(vx||vy);
+  const dash=(held.includes('cancel')||HR.dashT)&&P.st>0&&(vx||vy);
   const sp=dash?96:60;
+  if(HR.hard&&dash)forMons(()=>{if(M.smart&&M.active&&roomDist(M.room,P.room)<=2)M.heard=5;});
   if(dash)P.st=Math.max(0,P.st-18*dt);else P.st=Math.min(100,P.st+(vx||vy?10:22)*dt);
   if(P.st<=0)P.stl=1; if(P.st>25)P.stl=0;
   let sp2=dash&&!P.stl?96:60;
@@ -16799,6 +17323,7 @@ function update(dt){
   const ox0=P.x,oy0=P.y;
   if(vx){const nx=P.x+vx*sp2*dt;if(!boxSolid(R,nx,P.y))P.x=nx;else slide('x',nx);}
   if(vy){const ny=P.y+vy*sp2*dt;if(!boxSolid(R,P.x,ny))P.y=ny;else slide('y',ny);}
+  if(F.kjWith&&(vx||vy)){const tr=P.trail||(P.trail=[]);tr.push({x:P.x,y:P.y,room:P.room,dir:P.dir});if(tr.length>40)tr.shift();}
   /* ドアに乗ったか（乗る直前の位置を 覚えておく） */
   const cxp=Math.floor((P.x+8)/TS),cyp=Math.floor((P.y+12)/TS);
   for(const d of R.doors){if(d.x===cxp&&d.y===cyp){useDoor(d,ox0,oy0);break;}}
@@ -16806,7 +17331,7 @@ function update(dt){
 }
 
 /* --- 描画 --- */
-const COL={wood:['#4a3426','#412d21'],carpet:['#5a2230','#4f1d2a'],tile:['#aab4bc','#9aa4ac'],stone:['#3a3d4a','#33364a']};
+const COL={grass:['#2a4a2c','#244327'],wood:['#4a3426','#412d21'],carpet:['#5a2230','#4f1d2a'],tile:['#aab4bc','#9aa4ac'],stone:['#3a3d4a','#33364a']};
 function drawRoom(R,t){
   for(let y=0;y<RH;y++)for(let x=0;x<RW;x++){
     const v=R.g[y][x];const X=x*TS,Y=y*TS;
@@ -16822,7 +17347,7 @@ function drawRoom(R,t){
 }
 function drawDoor(d,R){
   const X=d.x*TS,Y=d.y*TS;
-  if(d.to==='exit'){cx.fillStyle='#2b1a10';cx.fillRect(X-8,Y,TS+16,TS);cx.fillStyle='#4a2c18';cx.fillRect(X-6,Y+1,TS+12,TS-1);cx.fillStyle='#d8b048';cx.fillRect(X+TS/2-1,Y+4,3,3);return;}
+  if(d.to==='exit'||d.big){cx.fillStyle='#2b1a10';cx.fillRect(X-8,Y,TS+16,TS);cx.fillStyle='#4a2c18';cx.fillRect(X-6,Y+1,TS+12,TS-1);cx.fillStyle='#d8b048';cx.fillRect(X+TS/2-1,Y+4,3,3);return;}
   const locked=d.lock&&!F[d.lock];
   cx.fillStyle=locked?'#3a2214':'#1b1010';cx.fillRect(X+(d.x===0||d.x===RW-1?0:1),Y+(d.y===0||d.y===RH-1?0:1),TS-(d.x===0||d.x===RW-1?0:2),TS-(d.y===0||d.y===RH-1?0:2));
   if(d.stairs){cx.fillStyle='#6a5a48';for(let i=0;i<4;i++)cx.fillRect(X+2,Y+2+i*3,TS-4,2);}
@@ -16857,6 +17382,15 @@ function drawObj(o,t){
    case 'toybox':R_(x,y,w,h,'#7a4a8a');R_(x+1,y+1,w-2,h-2,'#a06ab0');R_(x+w/2-2,y+h/2-2,4,4,'#ffd860');break;
    case 'musicbox':R_(x,y,w,h,'#5a3a1a');R_(x+1,y+1,w-2,h-2,'#8a5a2a');R_(x+w/2-2,y+2,4,3,'#e8d890');break;
    case 'stool':R_(x+3,y+5,10,8,'#8a8a96');break;
+    case 'pew':R_(x,y,w,h,'#2a1608');R_(x+1,y+1,w-2,h-3,'#5a3418');R_(x+1,y+1,w-2,2,'#7a4a24');break;
+    case 'glassw':R_(x,y,w,h,'#1a1a2a');for(let i=0;i<5;i++)R_(x+2+i*((w-4)/5),y+2,(w-4)/5-1,h-4,['#e8a030','#e8d84a','#e86a3a','#8aa8e8','#b8a0f0'][i]);break;
+    case 'book':R_(x+3,y+4,10,8,'#6a1a1a');R_(x+4,y+5,8,6,'#e8e0c8');break;
+    case 'candle':R_(x+6,y+6,4,8,'#e8e0c8');R_(x+7,y+3,2,3,'#ffb040');break;
+    case 'crate':R_(x,y,w,h,'#3a2a14');R_(x+1,y+1,w-2,h-2,'#6a5030');R_(x+1,y+h/2,w-2,1,'#3a2a14');break;
+    case 'trunk':R_(x,y,w,h,'#2a1a10');R_(x+1,y+1,w-2,h-2,'#7a4a24');R_(x+1,y+h/2-1,w-2,2,'#c0a040');R_(x+w/2-2,y+h/2-2,4,4,'#d8b048');break;
+    case 'doll':R_(x+5,y+2,6,5,'#f0d8c8');R_(x+4,y+7,8,7,'#8a2a4a');R_(x+6,y+4,1,1,'#101018');R_(x+9,y+4,1,1,'#101018');break;
+    case 'frame':R_(x+2,y+2,w-4,h-4,'#6a4a22');R_(x+3,y+3,w-6,h-6,'#e8e0c8');R_(x+4,y+5,w-8,h-9,'#7a8a9a');R_(x+5,y+6,3,2,'#f4f0e0');R_(x+3,y+h-4,w-6,1,'#00000040');break;
+    case 'hedge':R_(x,y,w,h,'#12301a');R_(x+1,y+1,w-2,h-3,'#2a6a34');for(let i=2;i<w-2;i+=5)R_(x+i,y+2,2,2,'#3a8a44');break;
   }
 }
 function drawPlayer(t){
@@ -16893,32 +17427,52 @@ function drawMon(x,y,t,s){ /* 足元中心(x,y) */
   R_(-6,-24,12,5,'#a01830');for(let i=-5;i<5;i+=2)R_(i,-24,1,2,'#fafafa');R_(-5,-20,10,1,'#fafafa');
   cx.restore();
 }
+let M2C=null;
+function drawMon2(x,y,t){
+  if(typeof MON_IMG==='undefined'||!MON_IMG.complete||!MON_IMG.naturalWidth){drawMon(x,y,t,.95);return;}
+  const W=46,Hh=Math.round(W*MON_AR);
+  if(!M2C){M2C=document.createElement('canvas');M2C.width=W*2;M2C.height=Hh*2;const g=M2C.getContext('2d');g.drawImage(MON_IMG,0,0,W*2,Hh*2);g.globalCompositeOperation='source-atop';g.fillStyle='rgba(150,20,190,.5)';g.fillRect(0,0,W*2,Hh*2);g.fillStyle='rgba(20,0,30,.25)';g.fillRect(0,0,W*2,Hh*2);}
+  cx.save();cx.translate(Math.round(x),Math.round(y));
+  const bob0=Math.sin((M.step||0))>0?1:0,sw=Math.sin((t||0)/120)*.07;
+  cx.fillStyle='rgba(0,0,0,.4)';cx.fillRect(-9,-1,18,3);
+  cx.translate(0,-bob0);cx.rotate(sw);const sm=cx.imageSmoothingEnabled;cx.imageSmoothingEnabled=true;
+  cx.drawImage(M2C,-W/2,-Hh+3,W,Hh);cx.imageSmoothingEnabled=sm;cx.restore();}
 function draw(now){
   if(!cx)return;const t=now;
   cx.save();cx.clearRect(0,0,SW,SH);
   const R=ROOMS[P.room];
-  if(P.shake>0||(M.active&&M.room===P.room&&!M.pend&&Math.hypot(M.x-P.x,M.y-P.y)<40&&!P.hidden)){cx.translate((Math.random()-.5)*2*(P.shake>0?3:1.2),(Math.random()-.5)*2);}
+  if(P.shake>0||(MS.some(m=>m.active&&m.room===P.room&&!m.pend&&Math.hypot(m.x-P.x,m.y-P.y)<40)&&!P.hidden)){cx.translate((Math.random()-.5)*2*(P.shake>0?3:1.2),(Math.random()-.5)*2);}
   /* 部屋は 15x11 タイル=240x176 */
   drawRoom(R,t);
   /* 鬼と主人公を y 順に */
-  const monHere=M.active&&M.room===P.room&&!M.pend;
+  const here=MS.filter(m=>m.active&&m.room===P.room&&!m.pend),monHere=here.length>0;
   const list=[];
   list.push({y:P.y+16,f:()=>drawPlayer(t)});
-  if(monHere)list.push({y:M.y,f:()=>drawMon(M.x,M.y,t)});
+  npcNow().forEach(n=>list.push({y:n.y*TS+16,f:()=>{const cv=sprCanvas(n.id,'m',n.dir||'down',16,16);cx.fillStyle='rgba(0,0,0,.35)';cx.fillRect(n.x*TS+3,n.y*TS+13,10,3);if(cv)cx.drawImage(cv,n.x*TS,n.y*TS);}}));
+  HR.sc.forEach(o=>list.push({y:o.mon?o.y:o.y+16,f:()=>drawSc(o,t)}));
+  const fp=followerPos();if(fp)list.push({y:fp.y+16,f:()=>{const cv=sprCanvas('kojiro','m',fp.dir||'down',16,16);cx.fillStyle='rgba(0,0,0,.35)';cx.fillRect(fp.x+3,fp.y+13,10,3);if(cv)cx.drawImage(cv,Math.round(fp.x),Math.round(fp.y));}});
+  if(HR.hard&&F.kjDead&&P.room==='hall')list.push({y:5*TS+16,f:()=>drawSc({id:'kojiro',x:5*TS,y:5*TS,dir:'down',rot:1.5},t)});
+  here.forEach(m=>list.push({y:m.y,f:()=>{const k=M;M=m;(m.smart?drawMon2:drawMon)(m.x,m.y,t);M=k;}}));
   list.sort((a,b)=>a.y-b.y).forEach(o=>o.f());
   /* 隠れ中：隠れ場所の隙間から外を覗く */
   if(P.hidden){const o=P.hideObj;if(o){const x=o.x*TS,y=o.y*TS,w=o.w*TS,h=o.h*TS;cx.fillStyle='#000';cx.fillRect(x+w/2-1,y+3,2,h-5);cx.fillStyle='#ff4060';if((t/400|0)%6)cx.fillRect(x+w/2-1,y+h/2-3,1,2);}}
   /* 暗闇 */
-  const rad=F&&F.flash?120:92;
+  const rad=HR.hard?(F&&F.flash?100:68):(F&&F.flash?120:92);
   const px=P.hidden?P.hx+8:P.x+8,py=P.hidden?P.hy+8:P.y+8;
   const gr=cx.createRadialGradient(px,py,rad*.2,px,py,rad);
-  gr.addColorStop(0,'rgba(0,0,10,0)');gr.addColorStop(1,'rgba(0,0,10,.93)');
-  cx.fillStyle=gr;cx.fillRect(0,0,SW,SH);
+  HR.lit=(HR.lit||0)+(((HR.sc.length>0||(HR.pause&&!P.dead&&!HR.scare))?1:0)-(HR.lit||0))*.12;
+  const dk=1-HR.lit;
+  gr.addColorStop(0,'rgba(0,0,10,0)');gr.addColorStop(1,`rgba(0,0,10,${.93*dk})`);
+  if(dk>.02){cx.fillStyle=gr;cx.fillRect(0,0,SW,SH);}
   /* 鬼が近いと赤く脈動 */
-  if(monHere){const d=Math.hypot(M.x-(P.x+8),M.y-(P.y+12));if(d<110){const a=(1-d/110)*.28*(.6+.4*Math.sin(t/110));cx.fillStyle=`rgba(190,10,30,${a})`;cx.fillRect(0,0,SW,SH);}}
+  if(monHere&&HR.lit<.5){const d=Math.min(...here.map(m=>Math.hypot(m.x-(P.x+8),m.y-(P.y+12))));if(d<110){const a=(1-d/110)*.28*(.6+.4*Math.sin(t/110));cx.fillStyle=`rgba(190,10,30,${a})`;cx.fillRect(0,0,SW,SH);}}
+  if(HR.hard&&HR.ev){const E=HR.ev;
+    if(E.ghost){cx.save();cx.globalAlpha=.4*Math.min(1,E.ghost.t*3);const k=M;M=MS[1];drawMon2(E.ghost.x,E.ghost.y,t);M=k;cx.restore();}
+    if(E.flick>0&&HR.lit<.5&&((t/70|0)%2===0)){cx.fillStyle='rgba(0,0,6,.96)';cx.fillRect(0,0,SW,SH);}}
   cx.restore();
   /* HUD */
   hud();
+  if(HR.flashA>0){cx.fillStyle=`rgba(255,255,255,${HR.flashA})`;cx.fillRect(0,0,SW,SH);HR.flashA=Math.max(0,HR.flashA-.04);}
   if(P.fade>0){cx.fillStyle=`rgba(0,0,0,${Math.min(1,P.fade*2.2)})`;cx.fillRect(0,0,SW,SH);}
   /* ジャンプスケア */
   if(HR.scare){const e=(performance.now()-HR.scare)/1000;
@@ -16934,17 +17488,20 @@ function hud(){
   cx.fillStyle='rgba(0,0,0,.55)';cx.fillRect(2,2,60,11);cx.fillStyle='#e8e0d0';cx.font='9px sans-serif';cx.textBaseline='top';cx.fillText(ROOMS[P.room].name,5,3);
   /* スタミナ */
   cx.fillStyle='rgba(0,0,0,.55)';cx.fillRect(2,14,42,5);cx.fillStyle=P.stl?'#c04040':'#40c080';cx.fillRect(3,15,Math.round(40*P.st/100),3);
+  if(HR.hard){cx.fillStyle='rgba(0,0,0,.55)';cx.fillRect(2,21,50,10);cx.fillStyle='#ff4a5a';cx.font='9px sans-serif';cx.fillText('♥'.repeat(Math.max(0,HLIFE()-F.deaths))+'♡'.repeat(Math.min(HLIFE(),F.deaths)),4,22);
+    if(HR.ev&&HR.ev.toast){const s2=HR.ev.toast.s;cx.font='9px sans-serif';const w=cx.measureText(s2).width+10;cx.fillStyle='rgba(0,0,0,.6)';cx.fillRect((SW-w)/2,SH-18,w,13);cx.fillStyle='#d8c8c8';cx.fillText(s2,(SW-w)/2+5,SH-16);}}
   /* 持ち物 */
   let ix=SW-10;
   const icon=(col)=>{cx.fillStyle='rgba(0,0,0,.55)';cx.fillRect(ix-4,2,12,10);cx.fillStyle=col;cx.fillRect(ix-2,5,4,4);cx.fillRect(ix+2,6,4,2);cx.fillRect(ix+4,8,1,2);ix-=14;};
-  if(F.silver)icon('#d0d4e0');if(F.cellar)icon('#e0b040');if(F.gate)icon('#ff4060');
+  if(F.silver)icon('#d0d4e0');if(F.cellar)icon('#e0b040');if(F.gate)icon('#ff4060');if(F.chain1)icon('#7ad0ff');if(F.chain2)icon('#c09aff');
   if(F.flash){cx.fillStyle='rgba(0,0,0,.55)';cx.fillRect(ix-4,2,12,10);cx.fillStyle='#f0e060';cx.fillRect(ix-2,4,6,3);cx.fillRect(ix+3,5,2,1);cx.fillStyle='#808080';cx.fillRect(ix-2,7,4,3);}
 }
 /* --- テスト用フック --- */
-HR._dbg={get P(){return P;},get M(){return M;},get F(){return F;},bfs,ROOMS,changeRoom,useDoor,caught,interact,nextDoor,roomDist,TS};
+HR._dbg={beatFx,phMake,gateCode,sepMons,ACT,sceneKakiume,sceneMag,sceneKojiro,mgRelease,puzCount,get P(){return P;},get M(){return M;},get MS(){return MS;},applyMode,genGrid,get F(){return F;},bfs,ROOMS,changeRoom,useDoor,caught,interact,nextDoor,roomDist,TS};
 window.HR=HR;
 })();
 
+TITLES.push(['hr1','洋館の生還者','洋館からの脱出を クリア',()=>(PROF.stat&&PROF.stat.horror)|0,1],['hr2','裏の洋館の主','洋館の高難易度【裏の洋館】を クリア',()=>((PROF.stat&&PROF.stat.horrorHard)|0)+((PROF.stat&&PROF.stat.horrorGm)|0),1],['hr3','洋館の伝説','洋館の【げらりんモード】を クリア',()=>(PROF.stat&&PROF.stat.horrorGm)|0,1]);
 /* ===== げらりん EXスキル【お祝い】：クリア報酬。MP0でも発動可、スキップ不可のお祝い動画→MP全回復 ===== */
 HERO.gerarin.sk.push({lv:1,hrx:true,n:'【お祝い】',mp:0,t:'self',k:'celeb',special:'celebrate'});
 function celebPlay(){return new Promise(res=>{
@@ -18557,5 +19114,54 @@ if(typeof farmSummary==='function'){const _fs=farmSummary;farmSummary=async func
   const r=await _fs.apply(this,arguments);
   try{if(Date.now()-(PROF.lastExport|0)>432e5){await say('⚠ 最後の データ書き出しから 半日以上 たっている。\nブラウザのデータが 消えると 周回の成果も 消える。\n「データの書き出し」で 保存しておこう。',3500);hideMsg();}}catch(e){}
   return r;};}
+/* ===== マグのドット絵マウスカーソル（PC・マウスのみ。スマホでは何も起きない） =====
+   通常：正面／クリックできる所：右向き／押している間：上向き（背中）。16x16を2倍＝44x44 */
+(()=>{try{
+  if(!window.matchMedia||!matchMedia('(hover:hover) and (pointer:fine)').matches)return;
+  const D=SPR.mag;if(!D||!D.map)return;
+  /* 左上に 矢印（先端が クリック位置）＋ その右下に マグ */
+  const ARW=["X...........","XX..........","XWX.........","XWWX........","XWWWX.......","XWWWWX......","XWWWWWX.....","XWWWWWWX....","XWWWWWWWX...","XWWWWXXXXX..","XWXWWX......","XX.XWWX.....","X..XWWX.....","....XWWX....","....XXXX...."];
+  const mk=dir=>{const rows=D.map[dir];const cv=document.createElement('canvas');cv.width=cv.height=44;const c=cv.getContext('2d');
+    rows.forEach((r,y)=>{for(let x=0;x<r.length;x++){const ch=r[x];if(ch!=='.'){c.fillStyle=D.pal[ch];c.fillRect(10+x*2,10+y*2,2,2);}}});
+    ARW.forEach((r,y)=>{for(let x=0;x<r.length;x++){const ch=r[x];if(ch==='.')continue;c.fillStyle=ch==='X'?'#10101a':'#ffffff';c.fillRect(x,y,1,1);}});
+    return cv.toDataURL();};
+  const nor=mk('down'),ptr=mk('right'),prs=mk('up');
+  const st=document.createElement('style');
+  const sel='button,.tb,#msg,[onclick],a,select,summary,label,input[type=checkbox],input[type=range]';
+  st.textContent=`html,body,canvas{cursor:url(${nor}) 0 0,auto}
+${sel.split(',').map(s=>s+':not(:disabled)').join(',')}{cursor:url(${ptr}) 0 0,pointer}
+html.magdn,html.magdn *{cursor:url(${prs}) 0 0,auto !important}`;
+  document.head.appendChild(st);
+  addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')document.documentElement.classList.add('magdn');},true);
+  addEventListener('pointerup',()=>document.documentElement.classList.remove('magdn'),true);
+  addEventListener('blur',()=>document.documentElement.classList.remove('magdn'));
+}catch(e){}})();
 showTitle();requestAnimationFrame(frame);
+
+/* ===== ホラゲ：スマホ操作（スティック／ダッシュはタップで切替） ===== */
+(()=>{
+  const pad=document.getElementById('pad'),dp=document.getElementById('dp'),B=pad&&pad.querySelector('[data-k=cancel]'),hint=document.querySelector('.hint');
+  if(!pad||!dp||!B)return;
+  const st=document.createElement('div');st.id='hstick';st.innerHTML='<i></i>';pad.insertBefore(st,dp);
+  const knob=st.firstChild;let cur=null,pid=null;const oldHint=hint?hint.textContent:'';
+  const setDir=d=>{if(d===cur)return;['up','down','left','right'].forEach(k=>release(k));cur=d;if(d)press(d);};
+  const calc=e=>{const r=st.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy;const m=Math.hypot(dx,dy),R=r.width/2-31;
+    if(m>R){dx*=R/m;dy*=R/m;}knob.style.transform=`translate(${dx}px,${dy}px)`;
+    const ax=Math.abs(dx),ay=Math.abs(dy);if(m<14){setDir(null);return;}
+    let d;if(cur==='left'||cur==='right')d=ay>ax*1.3?(dy<0?'up':'down'):(dx<0?'left':'right');
+    else if(cur==='up'||cur==='down')d=ax>ay*1.3?(dx<0?'left':'right'):(dy<0?'up':'down');
+    else d=ax>ay?(dx<0?'left':'right'):(dy<0?'up':'down');
+    setDir(d);};
+  st.addEventListener('pointerdown',e=>{e.preventDefault();pid=e.pointerId;try{st.setPointerCapture(pid);}catch(_){}calc(e);});
+  st.addEventListener('pointermove',e=>{if(e.pointerId===pid)calc(e);});
+  const end=e=>{if(e.pointerId!==pid)return;pid=null;knob.style.transform='';setDir(null);};
+  ['pointerup','pointercancel','lostpointercapture'].forEach(t=>st.addEventListener(t,end));
+  /* Bボタン：ホラゲ中はタップでダッシュ ON/OFF */
+  pad.addEventListener('pointerdown',e=>{if(!HR.on)return;const b=e.target.closest&&e.target.closest('[data-k=cancel]');if(!b)return;
+    e.preventDefault();e.stopPropagation();HR.dashT=!HR.dashT;B.classList.toggle('on',HR.dashT);B.textContent=HR.dashT?'走り中':'ダッシュ';},true);
+  ['pointerup','pointerleave','pointercancel'].forEach(t=>pad.addEventListener(t,e=>{if(HR.on&&e.target.closest&&e.target.closest('[data-k=cancel]')){e.stopPropagation();}},true));
+  HR.padOn=on=>{HR.dashT=false;B.classList.remove('on');setDir(null);knob.style.transform='';
+    document.body.classList.toggle('hron',!!on);B.textContent=on?'ダッシュ':'B';B.style.fontSize=on?'12px':'';
+    if(hint)hint.textContent=on?'スティック=移動 / ダッシュ=タップで ON・OFF / A=調べる・隠れる':oldHint;};
+})();
 </script>
